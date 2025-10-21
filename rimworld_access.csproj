@@ -23,6 +23,9 @@
   <Reference Include="UnityEngine.IMGUIModule">
     <HintPath>C:\Program Files (x86)\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
   </Reference>
+  <Reference Include="UnityEngine.TextRenderingModule">
+    <HintPath>C:\Program Files (x86)\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+  </Reference>
 </ItemGroup>
 
 
