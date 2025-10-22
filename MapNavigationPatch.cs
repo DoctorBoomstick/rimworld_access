@@ -51,6 +51,18 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Check for pawn selection cycling (comma and period keys)
+            if (Input.GetKeyDown(KeyCode.Period))
+            {
+                HandlePawnCycling(true, __instance);
+                return;
+            }
+            else if (Input.GetKeyDown(KeyCode.Comma))
+            {
+                HandlePawnCycling(false, __instance);
+                return;
+            }
+
             // Check for arrow key input
             IntVec3 moveOffset = IntVec3.Zero;
             bool keyPressed = false;
@@ -116,6 +128,47 @@ namespace RimWorldAccess
                 // This is done by preventing the KeyBindingDefOf checks from succeeding
                 // Note: We're using Input.GetKeyDown instead of KeyBindingDefOf to intercept earlier
             }
+        }
+
+        /// <summary>
+        /// Handles pawn selection cycling when comma or period keys are pressed.
+        /// </summary>
+        /// <param name="cycleForward">True for period (next), false for comma (previous)</param>
+        /// <param name="cameraDriver">The camera driver instance to move the camera</param>
+        private static void HandlePawnCycling(bool cycleForward, CameraDriver cameraDriver)
+        {
+            // Select the next or previous pawn
+            Pawn selectedPawn = cycleForward
+                ? PawnSelectionState.SelectNextColonist()
+                : PawnSelectionState.SelectPreviousColonist();
+
+            if (selectedPawn == null)
+            {
+                // No colonists available to select
+                ClipboardHelper.CopyToClipboard("No colonists available");
+                hasAnnouncedThisFrame = true;
+                return;
+            }
+
+            // Clear current selection and select the new pawn
+            if (Find.Selector != null)
+            {
+                Find.Selector.ClearSelection();
+                Find.Selector.Select(selectedPawn);
+            }
+
+            // Move map cursor to the selected pawn's position
+            IntVec3 pawnPosition = selectedPawn.Position;
+            MapNavigationState.CurrentCursorPosition = pawnPosition;
+
+            // Move camera to center on the pawn
+            cameraDriver.JumpToCurrentMapLoc(pawnPosition);
+
+            // Announce the selected pawn's name
+            string announcement = $"{selectedPawn.LabelShort} selected";
+            ClipboardHelper.CopyToClipboard(announcement);
+            MapNavigationState.LastAnnouncedInfo = announcement;
+            hasAnnouncedThisFrame = true;
         }
 
         /// <summary>
