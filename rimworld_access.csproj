@@ -26,6 +26,9 @@
   <Reference Include="UnityEngine.TextRenderingModule">
     <HintPath>C:\Program Files (x86)\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
   </Reference>
+  <Reference Include="UnityEngine.InputLegacyModule">
+    <HintPath>C:\Program Files (x86)\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+  </Reference>
 </ItemGroup>
 
 
