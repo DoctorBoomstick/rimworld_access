@@ -55,6 +55,24 @@ namespace RimWorldAccess
             {
                 return;
             }
+            // Don't process arrow keys if any confirmation dialog is active
+            if (WindowlessConfirmationState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if delete confirmation is active
+            if (WindowlessDeleteConfirmationState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if options menu is active
+            if (WindowlessOptionsMenuState.IsActive)
+            {
+                return;
+            }
+
 
 
             // Don't process arrow keys if the work menu is active

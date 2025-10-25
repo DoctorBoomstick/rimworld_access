@@ -140,6 +140,49 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 4.5: Handle options menu if active =====
+            if (WindowlessOptionsMenuState.IsActive)
+            {
+                bool handled = false;
+
+                if (key == KeyCode.DownArrow)
+                {
+                    WindowlessOptionsMenuState.SelectNext();
+                    handled = true;
+                }
+                else if (key == KeyCode.UpArrow)
+                {
+                    WindowlessOptionsMenuState.SelectPrevious();
+                    handled = true;
+                }
+                else if (key == KeyCode.LeftArrow)
+                {
+                    WindowlessOptionsMenuState.AdjustSetting(-1);  // Decrease slider or cycle left
+                    handled = true;
+                }
+                else if (key == KeyCode.RightArrow)
+                {
+                    WindowlessOptionsMenuState.AdjustSetting(1);   // Increase slider or cycle right
+                    handled = true;
+                }
+                else if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                {
+                    WindowlessOptionsMenuState.ExecuteSelected();
+                    handled = true;
+                }
+                else if (key == KeyCode.Escape)
+                {
+                    WindowlessOptionsMenuState.GoBack();
+                    handled = true;
+                }
+
+                if (handled)
+                {
+                    Event.current.Use();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 5: Handle order float menu if active =====
             if (WindowlessFloatMenuState.IsActive)
             {
