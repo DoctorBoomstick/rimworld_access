@@ -63,7 +63,7 @@ namespace RimWorldAccess
                 cachedColumn0.Add(new ListableOption("LoadGame".Translate(), delegate {
                     var method = AccessTools.Method(typeof(MainMenuDrawer), "CloseMainTab");
                     method.Invoke(null, null);
-                    Find.WindowStack.Add(new Dialog_SaveFileList_Load());
+                    WindowlessSaveMenuState.Open(SaveLoadMode.Load);
                 }));
             }
 
