@@ -57,7 +57,7 @@ namespace RimWorldAccess
 
                 MelonLoader.MelonLogger.Msg($"Found {allDesignators.Count} designators in category: {category.defName}");
 
-                // Get allowed designators (filters by game rules)
+                // Get allowed designators (filters by game rules and research)
                 foreach (Designator designator in category.ResolvedAllowedDesignators)
                 {
                     // Skip dropdown designators - we'll handle their contents instead
@@ -68,13 +68,21 @@ namespace RimWorldAccess
                         {
                             foreach (Designator element in dropdown.Elements)
                             {
-                                designators.Add(element);
+                                // Check visibility (includes research requirements)
+                                if (element.Visible)
+                                {
+                                    designators.Add(element);
+                                }
                             }
                         }
                     }
                     else
                     {
-                        designators.Add(designator);
+                        // Check visibility (includes research requirements)
+                        if (designator.Visible)
+                        {
+                            designators.Add(designator);
+                        }
                     }
                 }
 

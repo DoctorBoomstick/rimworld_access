@@ -271,7 +271,44 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 6: Open jump menu with J key (if no menu is active and we're in-game) =====
+            // ===== PRIORITY 6: Toggle draft mode with R key (if pawn is selected) =====
+            if (key == KeyCode.R)
+            {
+                // Only toggle draft if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                // 4. A colonist pawn is selected
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode &&
+                    Find.Selector != null && Find.Selector.NumSelected > 0)
+                {
+                    // Get the first selected pawn
+                    Pawn selectedPawn = Find.Selector.FirstSelectedObject as Pawn;
+
+                    if (selectedPawn != null &&
+                        selectedPawn.IsColonist &&
+                        selectedPawn.drafter != null &&
+                        selectedPawn.drafter.ShowDraftGizmo)
+                    {
+                        // Toggle draft state
+                        bool wasDrafted = selectedPawn.drafter.Drafted;
+                        selectedPawn.drafter.Drafted = !wasDrafted;
+
+                        // Announce the change
+                        string status = selectedPawn.drafter.Drafted ? "Drafted" : "Undrafted";
+                        ClipboardHelper.CopyToClipboard($"{selectedPawn.LabelShort} {status}");
+
+                        // Prevent the default R key behavior
+                        Event.current.Use();
+                        return;
+                    }
+                }
+            }
+
+            // ===== PRIORITY 7: Open jump menu with J key (if no menu is active and we're in-game) =====
             if (key == KeyCode.J)
             {
                 // Only open jump menu if:
@@ -292,7 +329,7 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 7: Open pause menu with Escape (if no menu is active and we're in-game) =====
+            // ===== PRIORITY 8: Open pause menu with Escape (if no menu is active and we're in-game) =====
             if (key == KeyCode.Escape)
             {
                 Log.Message("RimWorld Access: Escape key pressed");
@@ -316,7 +353,7 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 8: Handle Enter key for building inspection =====
+            // ===== PRIORITY 9: Handle Enter key for building inspection =====
             // Don't process if in zone creation mode
             if (ZoneCreationState.IsInCreationMode)
                 return;
@@ -370,7 +407,7 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 9: Handle right bracket ] key for colonist orders =====
+            // ===== PRIORITY 10: Handle right bracket ] key for colonist orders =====
             if (key == KeyCode.RightBracket)
             {
                 // Only process during normal gameplay with a valid map
