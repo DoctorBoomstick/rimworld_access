@@ -187,6 +187,12 @@ namespace RimWorldAccess
                 }
             }
 
+            // Note: ThingFilterMenuState, BillConfigState, BillsMenuState, and BuildingInspectState
+            // are all handled by BuildingInspectPatch with VeryHigh priority.
+            // We don't need to check for them here because BuildingInspectPatch will consume
+            // the events before they reach this patch. However, we DO need to continue processing
+            // to handle WindowlessFloatMenuState which can be active at the same time as BillsMenuState.
+
             // ===== PRIORITY 4.75: Handle jump menu if active =====
             if (JumpMenuState.IsActive)
             {
@@ -310,7 +316,7 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 8: Handle Enter key for order-giving =====
+            // ===== PRIORITY 8: Handle Enter key for order-giving or building inspection =====
             // Don't process if in zone creation mode
             if (ZoneCreationState.IsInCreationMode)
                 return;
@@ -331,14 +337,6 @@ namespace RimWorldAccess
             if (!MapNavigationState.IsInitialized)
                 return;
 
-            // Check if any pawns are selected
-            if (Find.Selector == null || !Find.Selector.SelectedPawns.Any())
-            {
-                ClipboardHelper.CopyToClipboard("No pawn selected");
-                Event.current.Use();
-                return;
-            }
-
             // Get the cursor position
             IntVec3 cursorPosition = MapNavigationState.CurrentCursorPosition;
             Map map = Find.CurrentMap;
@@ -351,6 +349,34 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Check if there's a building at the cursor position that has inspect tabs
+            List<Thing> thingsAtPosition = map.thingGrid.ThingsListAt(cursorPosition);
+            Thing buildingWithTabs = null;
+
+            foreach (Thing thing in thingsAtPosition)
+            {
+                if (thing.def.inspectorTabs != null && thing.def.inspectorTabs.Count > 0)
+                {
+                    buildingWithTabs = thing;
+                    break;
+                }
+            }
+
+            // If there's a building with tabs, open building inspect menu
+            if (buildingWithTabs != null)
+            {
+                BuildingInspectState.Open(buildingWithTabs);
+                Event.current.Use();
+                return;
+            }
+
+            // Otherwise, check for pawns to give orders to
+            if (Find.Selector == null || !Find.Selector.SelectedPawns.Any())
+            {
+                ClipboardHelper.CopyToClipboard("No pawn selected or building at cursor");
+                Event.current.Use();
+                return;
+            }
 
             // Get selected pawns
             List<Pawn> selectedPawns = Find.Selector.SelectedPawns.ToList();

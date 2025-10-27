@@ -102,6 +102,30 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Don't process arrow keys if building inspect menu is active
+            if (BuildingInspectState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if bills menu is active
+            if (BillsMenuState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if bill config menu is active
+            if (BillConfigState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if thing filter menu is active
+            if (ThingFilterMenuState.IsActive)
+            {
+                return;
+            }
+
             // Prevent processing input multiple times in the same frame
             // (Update() can be called multiple times per frame)
             int currentFrame = Time.frameCount;
