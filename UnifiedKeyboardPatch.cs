@@ -9,7 +9,7 @@ namespace RimWorldAccess
 {
     /// <summary>
     /// Unified Harmony patch for UIRoot.UIRootOnGUI to handle all keyboard accessibility features.
-    /// Handles: Escape key for pause menu, Enter key for building inspection, ] key for colonist orders, J key for jump menu, and all windowless menu navigation.
+    /// Handles: Escape key for pause menu, Enter key for building inspection, ] key for colonist orders, J key for jump menu, Alt+M for mood info, and all windowless menu navigation.
     /// </summary>
     [HarmonyPatch(typeof(UIRoot))]
     [HarmonyPatch("UIRootOnGUI")]
@@ -305,6 +305,27 @@ namespace RimWorldAccess
                         Event.current.Use();
                         return;
                     }
+                }
+            }
+
+            // ===== PRIORITY 6.5: Display mood info with Alt+M (if pawn is selected) =====
+            if (key == KeyCode.M && Event.current.alt)
+            {
+                // Only display mood if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode)
+                {
+                    // Display mood information
+                    MoodState.DisplayMoodInfo();
+
+                    // Prevent the default M key behavior
+                    Event.current.Use();
+                    return;
                 }
             }
 
