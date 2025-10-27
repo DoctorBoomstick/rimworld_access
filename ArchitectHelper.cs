@@ -260,6 +260,15 @@ namespace RimWorldAccess
                         label += extraInfo;
                     }
                 }
+                else
+                {
+                    // For non-build designators (orders), add description if available
+                    string description = GetDesignatorDescriptionText(designator);
+                    if (!string.IsNullOrEmpty(description))
+                    {
+                        label += $" ({description})";
+                    }
+                }
 
                 // Add action
                 options.Add(new FloatMenuOption(label, () => onSelected(designator)));
@@ -269,7 +278,7 @@ namespace RimWorldAccess
         }
 
         /// <summary>
-        /// Gets extra information (cost and skill requirements) for a buildable.
+        /// Gets extra information (cost, skill requirements, and description) for a buildable.
         /// </summary>
         private static string GetBuildableExtraInfo(BuildableDef buildable)
         {
@@ -278,23 +287,30 @@ namespace RimWorldAccess
 
             List<string> infoParts = new List<string>();
 
-            // Add cost information
+            // Add cost information first
             string costInfo = GetCostInfo(buildable);
             if (!string.IsNullOrEmpty(costInfo))
             {
                 infoParts.Add(costInfo);
             }
 
-            // Add skill requirements
+            // Add skill requirements second
             string skillInfo = GetSkillRequirements(buildable);
             if (!string.IsNullOrEmpty(skillInfo))
             {
                 infoParts.Add(skillInfo);
             }
 
+            // Add description last so players can skip it if they don't need it
+            string description = GetDescription(buildable);
+            if (!string.IsNullOrEmpty(description))
+            {
+                infoParts.Add(description);
+            }
+
             if (infoParts.Count > 0)
             {
-                return " (" + string.Join(", ", infoParts) + ")";
+                return " (" + string.Join(". ", infoParts) + ")";
             }
 
             return "";
@@ -377,6 +393,48 @@ namespace RimWorldAccess
             if (skillParts.Count > 0)
             {
                 return "Skills: " + string.Join(", ", skillParts);
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// Gets the description for a buildable as a formatted string.
+        /// </summary>
+        private static string GetDescription(BuildableDef buildable)
+        {
+            if (buildable == null)
+                return "";
+
+            string description = buildable.description;
+            if (!string.IsNullOrEmpty(description))
+            {
+                // Clean up the description - remove newlines and excess whitespace
+                description = description.Replace("\n", " ").Replace("\r", " ");
+                description = System.Text.RegularExpressions.Regex.Replace(description, @"\s+", " ").Trim();
+
+                return description;
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// Gets the description text for a designator (for orders/commands).
+        /// </summary>
+        private static string GetDesignatorDescriptionText(Designator designator)
+        {
+            if (designator == null)
+                return "";
+
+            string description = designator.Desc;
+            if (!string.IsNullOrEmpty(description))
+            {
+                // Clean up the description - remove newlines and excess whitespace
+                description = description.Replace("\n", " ").Replace("\r", " ");
+                description = System.Text.RegularExpressions.Regex.Replace(description, @"\s+", " ").Trim();
+
+                return description;
             }
 
             return "";
