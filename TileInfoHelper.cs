@@ -66,6 +66,15 @@ namespace RimWorldAccess
             {
                 if (addedSomething) sb.Append(", ");
                 sb.Append(building.LabelShort);
+
+                // Add power information if building has power components
+                string powerInfo = PowerInfoHelper.GetPowerInfo(building);
+                if (!string.IsNullOrEmpty(powerInfo))
+                {
+                    sb.Append(", ");
+                    sb.Append(powerInfo);
+                }
+
                 addedSomething = true;
             }
             if (buildings.Count > 2)
@@ -181,7 +190,16 @@ namespace RimWorldAccess
                     sb.AppendLine($"\nBuildings ({buildings.Count}):");
                     foreach (var building in buildings)
                     {
-                        sb.AppendLine($"  - {building.LabelShortCap}");
+                        sb.Append($"  - {building.LabelShortCap}");
+
+                        // Add power information if building has power components
+                        string powerInfo = PowerInfoHelper.GetPowerInfo(building);
+                        if (!string.IsNullOrEmpty(powerInfo))
+                        {
+                            sb.Append($" ({powerInfo})");
+                        }
+
+                        sb.AppendLine();
                     }
                 }
 

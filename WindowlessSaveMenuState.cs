@@ -73,10 +73,17 @@ namespace RimWorldAccess
         /// </summary>
         public static void SelectNext()
         {
-            if (saveFiles == null || saveFiles.Count == 0)
+            if (saveFiles == null)
                 return;
 
-            selectedIndex = (selectedIndex + 1) % saveFiles.Count;
+            // In save mode, we have "Create New Save" at index 0, then existing files at indices 1+
+            // In load mode, we only have existing files starting at index 0
+            int maxIndex = currentMode == SaveLoadMode.Save ? saveFiles.Count : saveFiles.Count - 1;
+
+            if (maxIndex < 0)
+                return;
+
+            selectedIndex = (selectedIndex + 1) % (maxIndex + 1);
             AnnounceCurrentState();
         }
 
@@ -85,10 +92,17 @@ namespace RimWorldAccess
         /// </summary>
         public static void SelectPrevious()
         {
-            if (saveFiles == null || saveFiles.Count == 0)
+            if (saveFiles == null)
                 return;
 
-            selectedIndex = (selectedIndex - 1 + saveFiles.Count) % saveFiles.Count;
+            // In save mode, we have "Create New Save" at index 0, then existing files at indices 1+
+            // In load mode, we only have existing files starting at index 0
+            int maxIndex = currentMode == SaveLoadMode.Save ? saveFiles.Count : saveFiles.Count - 1;
+
+            if (maxIndex < 0)
+                return;
+
+            selectedIndex = (selectedIndex - 1 + (maxIndex + 1)) % (maxIndex + 1);
             AnnounceCurrentState();
         }
 
@@ -115,10 +129,20 @@ namespace RimWorldAccess
             if (saveFiles == null || saveFiles.Count == 0)
                 return;
 
-            if (selectedIndex < 0 || selectedIndex >= saveFiles.Count)
+            // In save mode, index 0 is "Create New Save" which can't be deleted
+            if (currentMode == SaveLoadMode.Save && selectedIndex == 0)
+            {
+                ClipboardHelper.CopyToClipboard("Cannot delete 'Create New Save' option");
+                return;
+            }
+
+            // Adjust index for save mode (where index 0 is "Create New Save")
+            int fileIndex = currentMode == SaveLoadMode.Save ? selectedIndex - 1 : selectedIndex;
+
+            if (fileIndex < 0 || fileIndex >= saveFiles.Count)
                 return;
 
-            SaveFileInfo selectedFile = saveFiles[selectedIndex];
+            SaveFileInfo selectedFile = saveFiles[fileIndex];
             string fileName = Path.GetFileNameWithoutExtension(selectedFile.FileName);
 
             // Open confirmation
@@ -126,10 +150,14 @@ namespace RimWorldAccess
             WindowlessDeleteConfirmationState.Open(selectedFile.FileInfo, () => {
                 // After deletion, reload and reopen this menu
                 ReloadFiles();
-                if (selectedIndex >= saveFiles.Count)
+
+                // Adjust selected index after deletion
+                int maxIndex = currentMode == SaveLoadMode.Save ? saveFiles.Count : saveFiles.Count - 1;
+                if (selectedIndex > maxIndex)
                 {
-                    selectedIndex = Math.Max(0, saveFiles.Count - 1);
+                    selectedIndex = Math.Max(0, maxIndex);
                 }
+
                 isActive = true; // Reactivate this menu
                 AnnounceCurrentState();
             });
@@ -140,7 +168,25 @@ namespace RimWorldAccess
 
         private static void ExecuteSave()
         {
-            string saveName = typedSaveName;
+            string saveName;
+
+            // Check if we're on "Create New Save" option (index 0) or an existing save file
+            if (selectedIndex == 0)
+            {
+                // Create new save with typed name
+                saveName = typedSaveName;
+            }
+            else if (saveFiles != null && selectedIndex > 0 && selectedIndex <= saveFiles.Count)
+            {
+                // Overwrite existing save file
+                SaveFileInfo selectedFile = saveFiles[selectedIndex - 1]; // Adjust for "Create New Save" at index 0
+                saveName = Path.GetFileNameWithoutExtension(selectedFile.FileName);
+            }
+            else
+            {
+                ClipboardHelper.CopyToClipboard("Invalid save selection");
+                return;
+            }
 
             if (string.IsNullOrEmpty(saveName))
             {
@@ -215,15 +261,20 @@ namespace RimWorldAccess
         {
             if (currentMode == SaveLoadMode.Save)
             {
-                if (saveFiles != null && saveFiles.Count > 0 && selectedIndex >= 0 && selectedIndex < saveFiles.Count)
+                // Index 0 is "Create New Save", indices 1+ are existing files
+                if (selectedIndex == 0)
                 {
-                    SaveFileInfo file = saveFiles[selectedIndex];
+                    ClipboardHelper.CopyToClipboard($"Create New Save: {typedSaveName}");
+                }
+                else if (saveFiles != null && selectedIndex > 0 && selectedIndex <= saveFiles.Count)
+                {
+                    SaveFileInfo file = saveFiles[selectedIndex - 1]; // Adjust for "Create New Save" at index 0
                     string fileName = Path.GetFileNameWithoutExtension(file.FileName);
                     ClipboardHelper.CopyToClipboard($"Overwrite: {fileName} - {file.LastWriteTime:yyyy-MM-dd HH:mm}");
                 }
                 else
                 {
-                    ClipboardHelper.CopyToClipboard($"Save as: {typedSaveName}");
+                    ClipboardHelper.CopyToClipboard($"Create New Save: {typedSaveName}");
                 }
             }
             else // Load mode
