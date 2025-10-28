@@ -26,7 +26,7 @@ namespace RimWorldAccess
                 if (!hasAnnouncedTitle)
                 {
                     string pageTitle = "Select Starting Site";
-                    ClipboardHelper.CopyToClipboard($"{pageTitle} - Arrow keys to navigate, Space for basic info, I for detailed info menu, F for factions, Enter to validate selection");
+                    ClipboardHelper.CopyToClipboard($"{pageTitle} - Arrow keys to navigate, Control+arrows to jump by biome, Space for basic info, I for detailed info menu, F for factions, Enter to validate selection");
                     hasAnnouncedTitle = true;
                 }
 
@@ -101,6 +101,13 @@ namespace RimWorldAccess
                             Event.current.Use();
                             patchActive = true;
                         }
+                        else if (Event.current.control)
+                        {
+                            // Control + Up: Jump to next biome north
+                            StartingSiteNavigationState.JumpToNextBiomeInDirection(Direction8Way.North);
+                            Event.current.Use();
+                            patchActive = true;
+                        }
                         else
                         {
                             // Move north
@@ -118,6 +125,13 @@ namespace RimWorldAccess
                             Event.current.Use();
                             patchActive = true;
                         }
+                        else if (Event.current.control)
+                        {
+                            // Control + Down: Jump to next biome south
+                            StartingSiteNavigationState.JumpToNextBiomeInDirection(Direction8Way.South);
+                            Event.current.Use();
+                            patchActive = true;
+                        }
                         else
                         {
                             // Move south
@@ -130,20 +144,40 @@ namespace RimWorldAccess
                     {
                         if (!menuOpen)
                         {
-                            // Move west
-                            StartingSiteNavigationState.MoveInDirection(Direction8Way.West);
-                            Event.current.Use();
-                            patchActive = true;
+                            if (Event.current.control)
+                            {
+                                // Control + Left: Jump to next biome west
+                                StartingSiteNavigationState.JumpToNextBiomeInDirection(Direction8Way.West);
+                                Event.current.Use();
+                                patchActive = true;
+                            }
+                            else
+                            {
+                                // Move west
+                                StartingSiteNavigationState.MoveInDirection(Direction8Way.West);
+                                Event.current.Use();
+                                patchActive = true;
+                            }
                         }
                     }
                     else if (keyCode == KeyCode.RightArrow)
                     {
                         if (!menuOpen)
                         {
-                            // Move east
-                            StartingSiteNavigationState.MoveInDirection(Direction8Way.East);
-                            Event.current.Use();
-                            patchActive = true;
+                            if (Event.current.control)
+                            {
+                                // Control + Right: Jump to next biome east
+                                StartingSiteNavigationState.JumpToNextBiomeInDirection(Direction8Way.East);
+                                Event.current.Use();
+                                patchActive = true;
+                            }
+                            else
+                            {
+                                // Move east
+                                StartingSiteNavigationState.MoveInDirection(Direction8Way.East);
+                                Event.current.Use();
+                                patchActive = true;
+                            }
                         }
                     }
                 }
@@ -251,8 +285,8 @@ namespace RimWorldAccess
                     Text.Anchor = TextAnchor.UpperLeft;
 
                     string helpText = "Starting Site Selection:\n" +
-                                    "Arrow Keys: Navigate map  |  Space: Read basic info  |  I: Additional info menu\n" +
-                                    "F: Faction relations  |  R: Random site  |  Enter: Validate selection";
+                                    "Arrow Keys: Navigate map  |  Control+Arrows: Jump by biome  |  Space: Read basic info\n" +
+                                    "I: Additional info menu  |  F: Faction relations  |  R: Random site  |  Enter: Validate";
 
                     Widgets.Label(helpRect.ContractedBy(5f), helpText);
                     Text.Anchor = TextAnchor.UpperLeft;

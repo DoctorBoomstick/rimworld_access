@@ -163,6 +163,92 @@ namespace RimWorldAccess
             }
         }
 
+        public static void JumpToNextBiomeInDirection(Direction8Way direction)
+        {
+            PlanetTile currentTile = Find.WorldInterface.SelectedTile;
+
+            if (!currentTile.Valid)
+            {
+                // If no tile selected, start with a random valid tile
+                SelectRandomTile();
+                return;
+            }
+
+            // Get current biome
+            BiomeDef currentBiome = currentTile.Tile.PrimaryBiome;
+
+            // Close menu when jumping
+            isMenuOpen = false;
+
+            // Keep moving in the direction until we find a different biome
+            PlanetTile nextTile = currentTile;
+            PlanetTile candidateTile = PlanetTile.Invalid;
+            int maxIterations = 1000; // Prevent infinite loops
+            int iterations = 0;
+
+            while (iterations < maxIterations)
+            {
+                // Get neighbors of current position
+                List<PlanetTile> neighbors = new List<PlanetTile>();
+                Find.WorldGrid.GetTileNeighbors(nextTile, neighbors);
+
+                if (neighbors.Count == 0)
+                {
+                    break;
+                }
+
+                // Find the neighbor closest to the desired direction
+                PlanetTile bestNeighbor = FindNeighborInDirection(nextTile, neighbors, direction);
+
+                if (!bestNeighbor.Valid)
+                {
+                    break;
+                }
+
+                // Check if this neighbor has a different biome
+                BiomeDef neighborBiome = bestNeighbor.Tile.PrimaryBiome;
+                if (neighborBiome != currentBiome)
+                {
+                    candidateTile = bestNeighbor;
+                    break;
+                }
+
+                // Move to this neighbor and continue searching
+                nextTile = bestNeighbor;
+                iterations++;
+            }
+
+            if (candidateTile.Valid)
+            {
+                // Update selection
+                Find.WorldInterface.SelectedTile = candidateTile;
+                Find.GameInitData.startingTile = candidateTile;
+                Find.WorldCameraDriver.JumpTo(Find.WorldGrid.GetTileCenter(candidateTile));
+
+                // Announce the new tile
+                string tileInfo = GetTileDescription(candidateTile);
+                Direction8Way actualDirection = Find.WorldGrid.GetDirection8WayFromTo(currentTile, candidateTile);
+
+                // Check faction proximity warning changes
+                string factionWarning = GetFactionProximityWarning(candidateTile);
+                if (factionWarning != lastFactionWarning)
+                {
+                    if (!string.IsNullOrEmpty(factionWarning))
+                    {
+                        tileInfo += " | " + factionWarning;
+                    }
+                    lastFactionWarning = factionWarning;
+                }
+
+                ClipboardHelper.CopyToClipboard($"Jumped {actualDirection} to new biome ({iterations} tiles): {tileInfo}");
+            }
+            else
+            {
+                // No different biome found in that direction
+                ClipboardHelper.CopyToClipboard($"No different biome found in {direction} direction (searched {iterations} tiles)");
+            }
+        }
+
         // Menu System
         public static void OpenAdditionalInfoMenu()
         {

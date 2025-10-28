@@ -98,12 +98,6 @@ namespace RimWorldAccess
                         Event.current.Use();
                         patchActive = true;
                     }
-                    else if (keyCode == KeyCode.Tab)
-                    {
-                        ColonistEditorNavigationState.EnterMode();
-                        Event.current.Use();
-                        patchActive = true;
-                    }
                     else if (keyCode == KeyCode.RightArrow)
                     {
                         ColonistEditorNavigationState.DrillIn();

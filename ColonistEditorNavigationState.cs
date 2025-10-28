@@ -40,7 +40,8 @@ namespace RimWorldAccess
             Health,
             Relations,
             Traits,
-            Gear
+            Gear,
+            IncapableOf
         }
 
         private static readonly List<Section> availableSections = new List<Section>
@@ -50,7 +51,8 @@ namespace RimWorldAccess
             Section.Health,
             Section.Relations,
             Section.Traits,
-            Section.Gear
+            Section.Gear,
+            Section.IncapableOf
         };
 
         public static void Initialize()
@@ -133,19 +135,20 @@ namespace RimWorldAccess
 
         public static void EnterMode()
         {
-            // Tab key - enter section navigation from pawn list
+            // Deprecated - functionality moved to DrillIn() via right arrow
+            // Keeping method for backward compatibility but it does nothing
+        }
+
+        public static void DrillIn()
+        {
+            // Right arrow - enter section navigation from pawn list, or drill into details from section list
             if (currentMode == NavigationMode.PawnList)
             {
                 currentMode = NavigationMode.SectionList;
                 currentSectionIndex = 0;
                 CopySectionToClipboard();
             }
-        }
-
-        public static void DrillIn()
-        {
-            // Right arrow - drill into details
-            if (currentMode == NavigationMode.SectionList)
+            else if (currentMode == NavigationMode.SectionList)
             {
                 currentMode = NavigationMode.DetailView;
                 currentDetailIndex = 0;
@@ -350,6 +353,9 @@ namespace RimWorldAccess
                 case Section.Gear:
                     return pawn.equipment?.AllEquipmentListForReading?.Count ?? 0;
 
+                case Section.IncapableOf:
+                    return GetIncapableOfCount(pawn);
+
                 default:
                     return 0;
             }
@@ -382,6 +388,9 @@ namespace RimWorldAccess
 
                 case Section.Gear:
                     return GetGearText(pawn, index);
+
+                case Section.IncapableOf:
+                    return GetIncapableOfText(pawn, index);
 
                 default:
                     return "Unknown section";
@@ -464,12 +473,95 @@ namespace RimWorldAccess
             return $"{equipment.LabelCap} - {equipment.DescriptionDetailed}";
         }
 
+        private static int GetIncapableOfCount(Pawn pawn)
+        {
+            if (pawn?.story?.DisabledWorkTagsBackstoryAndTraits == null)
+                return 0;
+
+            int count = 0;
+            foreach (WorkTags workTag in System.Enum.GetValues(typeof(WorkTags)))
+            {
+                if (workTag == WorkTags.None) continue;
+                if ((pawn.story.DisabledWorkTagsBackstoryAndTraits & workTag) != 0)
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private static string GetIncapableOfText(Pawn pawn, int index)
+        {
+            if (pawn?.story?.DisabledWorkTagsBackstoryAndTraits == null)
+                return "Not incapable of anything";
+
+            List<WorkTags> incapableTags = new List<WorkTags>();
+            foreach (WorkTags workTag in System.Enum.GetValues(typeof(WorkTags)))
+            {
+                if (workTag == WorkTags.None) continue;
+                if ((pawn.story.DisabledWorkTagsBackstoryAndTraits & workTag) != 0)
+                {
+                    incapableTags.Add(workTag);
+                }
+            }
+
+            if (incapableTags.Count == 0)
+                return "Not incapable of anything";
+
+            if (index < 0 || index >= incapableTags.Count)
+                return "Invalid index";
+
+            WorkTags selectedTag = incapableTags[index];
+
+            // Get the reason(s) for this incapability
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine($"Incapable of: {selectedTag.LabelTranslated().CapitalizeFirst()}");
+            sb.AppendLine();
+
+            // List affected work types
+            sb.AppendLine("Affected work types:");
+            foreach (WorkTypeDef workType in DefDatabase<WorkTypeDef>.AllDefs)
+            {
+                if ((workType.workTags & selectedTag) != WorkTags.None)
+                {
+                    sb.AppendLine($"- {workType.pawnLabel}");
+                }
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("Reasons:");
+
+            // Check backstories
+            if (pawn.story.Childhood != null && (pawn.story.Childhood.workDisables & selectedTag) != 0)
+            {
+                sb.AppendLine($"- Childhood: {pawn.story.Childhood.title}");
+            }
+            if (pawn.story.Adulthood != null && (pawn.story.Adulthood.workDisables & selectedTag) != 0)
+            {
+                sb.AppendLine($"- Adulthood: {pawn.story.Adulthood.title}");
+            }
+
+            // Check traits
+            if (pawn.story.traits?.allTraits != null)
+            {
+                foreach (Trait trait in pawn.story.traits.allTraits)
+                {
+                    if (trait.def.disabledWorkTags != WorkTags.None && (trait.def.disabledWorkTags & selectedTag) != 0)
+                    {
+                        sb.AppendLine($"- Trait: {trait.LabelCap}");
+                    }
+                }
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
         public static string GetCurrentModeDescription()
         {
             switch (currentMode)
             {
                 case NavigationMode.PawnList:
-                    return "Pawn List Mode - Up/Down:navigate | Tab:sections | R:randomize | E:edit name | Space:swap | A:add | Del:remove | Enter:begin";
+                    return "Pawn List Mode - Up/Down:navigate | Right:sections | R:randomize | E:edit name | Space:swap | A:add | Del:remove | Enter:begin";
                 case NavigationMode.SectionList:
                     return "Section Mode - Up/Down:navigate | Right:drill in | Left:back | I:info card";
                 case NavigationMode.DetailView:
@@ -764,6 +856,12 @@ namespace RimWorldAccess
                                 infoText.AppendLine();
                                 infoText.AppendLine(relation.def.description);
                             }
+                            break;
+
+                        case Section.IncapableOf:
+                            // Just show the same text as the detail view
+                            infoText.AppendLine($"=== {pawn.Name} - Incapabilities ===");
+                            infoText.AppendLine(GetIncapableOfText(pawn, currentDetailIndex));
                             break;
 
                         default:
