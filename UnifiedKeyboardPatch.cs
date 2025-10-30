@@ -542,6 +542,48 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 6.7: Open assign menu with Shift+A key =====
+            if (key == KeyCode.A && Event.current.shift)
+            {
+                // Only open assign menu if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode)
+                {
+                    // Prevent the default A key behavior (architect menu)
+                    Event.current.Use();
+
+                    // Get the selected pawn, or use first colonist if none selected
+                    Pawn targetPawn = null;
+                    if (Find.Selector != null && Find.Selector.NumSelected > 0)
+                    {
+                        targetPawn = Find.Selector.FirstSelectedObject as Pawn;
+                    }
+
+                    // If no pawn selected, use first colonist
+                    if (targetPawn == null && Find.CurrentMap.mapPawns.FreeColonists.Any())
+                    {
+                        targetPawn = Find.CurrentMap.mapPawns.FreeColonists.First();
+                    }
+
+                    if (targetPawn != null)
+                    {
+                        // Open the assign menu
+                        AssignMenuState.Open(targetPawn);
+                    }
+                    else
+                    {
+                        ClipboardHelper.CopyToClipboard("No colonists available");
+                    }
+
+                    return;
+                }
+            }
+
             // ===== PRIORITY 7: Open jump menu with J key (if no menu is active and we're in-game) =====
             if (key == KeyCode.J)
             {

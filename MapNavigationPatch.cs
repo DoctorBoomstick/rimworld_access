@@ -102,6 +102,18 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Don't process arrow keys if the assign menu is active
+            if (AssignMenuState.IsActive)
+            {
+                return;
+            }
+
+            // Don't process arrow keys if the outfit policy editor is active
+            if (WindowlessOutfitPolicyState.IsActive)
+            {
+                return;
+            }
+
             // Don't process arrow keys if the schedule menu is active
             if (WindowlessScheduleState.IsActive)
             {

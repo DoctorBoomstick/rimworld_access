@@ -34,6 +34,10 @@ namespace RimWorldAccess
             if (key != KeyCode.A)
                 return;
 
+            // Don't process if Shift is held (Shift+A is reserved for assign menu)
+            if (Event.current.shift)
+                return;
+
             // Cooldown to prevent accidental double-presses
             if (Time.time - lastArchitectKeyTime < ArchitectKeyCooldown)
                 return;
