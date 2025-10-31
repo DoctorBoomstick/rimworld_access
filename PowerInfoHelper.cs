@@ -121,7 +121,7 @@ namespace RimWorldAccess
             if (plant.PowerOn)
             {
                 // Generating power
-                float output = -plant.PowerOutput; // Negative output means generation
+                float output = plant.PowerOutput; // Generators have positive PowerOutput
                 sb.Append($"Generating {output:F0}W");
 
                 // Check for issues that might stop generation
