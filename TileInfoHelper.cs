@@ -64,7 +64,14 @@ namespace RimWorldAccess
             foreach (var building in buildings.Take(2))
             {
                 if (addedSomething) sb.Append(", ");
-                sb.Append(building.LabelShort);
+
+                // Check if this is a smoothed stone wall and add "wall" suffix
+                string buildingLabel = building.LabelShort;
+                if (building.def.defName.StartsWith("Smoothed") && building.def.building != null && !building.def.building.isNaturalRock)
+                {
+                    buildingLabel += " wall";
+                }
+                sb.Append(buildingLabel);
 
                 // Add temperature control information if building is a cooler/heater
                 string tempControlInfo = GetTemperatureControlInfo(building);
@@ -124,7 +131,14 @@ namespace RimWorldAccess
             if (terrain != null && !TerrainAudioHelper.HasAudioMatch(terrain))
             {
                 if (addedSomething) sb.Append(", ");
-                sb.Append(terrain.LabelCap);
+
+                // Check if this is a smooth stone floor and add "floor" suffix
+                string terrainLabel = terrain.LabelCap;
+                if (terrain.defName.EndsWith("_Smooth"))
+                {
+                    terrainLabel += " floor";
+                }
+                sb.Append(terrainLabel);
                 addedSomething = true;
             }
 
