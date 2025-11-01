@@ -21,12 +21,32 @@ Enter         Select menu item
 IN-GAME NAVIGATION
 ------------------
 Arrow Keys    Move map cursor (announces terrain, buildings, items, pawns)
-comma (,): Cycle to previous colonist.
-period (.): Cycle to next colonist.
+, (comma)     Cycle to previous colonist
+. (period)    Cycle to next colonist
 Enter         Open inspection menu at cursor position
 Escape        Open pause menu
 
 (Note: All menus use Arrow Keys to navigate, Enter to confirm, Escape to close)
+
+
+TILE INFORMATION (Keys 1-5)
+----------------------------
+While navigating the map with arrow keys, press these keys to get specific information
+about the tile under the cursor:
+
+1             List all items and pawns at cursor position
+2             Show flooring details (terrain type, beauty, cleanliness, path cost)
+3             Display plant information (species, growth %, harvestable status)
+4             Report light level and glow value
+5             Show temperature (°C) and indoor/outdoor status
+
+
+TIME CONTROLS
+-------------
+Shift+1       Set time speed to Normal (with sound feedback)
+Shift+2       Set time speed to Fast (with sound feedback)
+Shift+3       Set time speed to Superfast (with sound feedback)
+Space         Pause/unpause game
 
 
 BUILD SYSTEM (Press A)
