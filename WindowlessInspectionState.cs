@@ -463,6 +463,12 @@ namespace RimWorldAccess
                                     CharacterTabState.Open(pawn);
                                     return;
                                 }
+                                // Delegate to Prisoner tab
+                                else if (currentSelectedCategory == "Prisoner")
+                                {
+                                    PrisonerTabState.Open(pawn);
+                                    return;
+                                }
                             }
 
                             // Fallback to detailed info for other categories

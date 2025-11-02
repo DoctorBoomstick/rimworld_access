@@ -86,7 +86,8 @@ namespace RimWorldAccess
                    WindowlessOptionsMenuState.IsActive ||
                    WindowlessConfirmationState.IsActive ||
                    StorageSettingsMenuState.IsActive ||
-                   PlantSelectionMenuState.IsActive;
+                   PlantSelectionMenuState.IsActive ||
+                   PrisonerTabState.IsActive;
         }
 
         /// <summary>

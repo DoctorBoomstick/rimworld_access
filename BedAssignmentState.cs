@@ -448,11 +448,11 @@ namespace RimWorldAccess
             // Check if changing to prisoner type
             if (newOwnerType == BedOwnerType.Prisoner)
             {
-                // Validate that the room is a valid prison cell
+                // Validate that the room CAN be a valid prison cell (enclosed room)
                 Room room = selectedBed.GetRoom();
-                if (room == null || !room.IsPrisonCell)
+                if (room == null || !Building_Bed.RoomCanBePrisonCell(room))
                 {
-                    ClipboardHelper.CopyToClipboard("Cannot set bed for prisoners - not in a prison cell. Mark room as prison first.");
+                    ClipboardHelper.CopyToClipboard("Cannot set bed for prisoners - not in an enclosed room. Build walls around the bed first.");
                     return;
                 }
             }

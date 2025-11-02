@@ -80,6 +80,12 @@ namespace RimWorldAccess
                     categories.Add("Social");
                     categories.Add("Character");
                     categories.Add("Work Priorities");
+
+                    // Add Prisoner category for prisoners and slaves
+                    if (pawn.IsPrisonerOfColony || pawn.IsSlaveOfColony)
+                    {
+                        categories.Add("Prisoner");
+                    }
                 }
                 else // Animal
                 {

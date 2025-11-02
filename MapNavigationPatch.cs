@@ -150,6 +150,12 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Don't process arrow keys if prisoner tab is active
+            if (PrisonerTabState.IsActive)
+            {
+                return;
+            }
+
             // Don't process arrow keys if bill config menu is active
             if (BillConfigState.IsActive)
             {

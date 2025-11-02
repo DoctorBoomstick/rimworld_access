@@ -476,6 +476,66 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 4.85: Handle prisoner tab if active =====
+            if (PrisonerTabState.IsActive)
+            {
+                bool handled = false;
+
+                if (key == KeyCode.Tab)
+                {
+                    if (Event.current.shift)
+                    {
+                        PrisonerTabState.PreviousSection();
+                    }
+                    else
+                    {
+                        PrisonerTabState.NextSection();
+                    }
+                    handled = true;
+                }
+                else if (key == KeyCode.DownArrow)
+                {
+                    PrisonerTabState.NavigateDown();
+                    handled = true;
+                }
+                else if (key == KeyCode.UpArrow)
+                {
+                    PrisonerTabState.NavigateUp();
+                    handled = true;
+                }
+                else if (key == KeyCode.LeftArrow)
+                {
+                    PrisonerTabState.AdjustLeft();
+                    handled = true;
+                }
+                else if (key == KeyCode.RightArrow)
+                {
+                    PrisonerTabState.AdjustRight();
+                    handled = true;
+                }
+                else if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                {
+                    PrisonerTabState.ExecuteAction();
+                    handled = true;
+                }
+                else if (key == KeyCode.Space)
+                {
+                    PrisonerTabState.ToggleCheckbox();
+                    handled = true;
+                }
+                else if (key == KeyCode.Escape)
+                {
+                    PrisonerTabState.Close();
+                    handled = true;
+                }
+
+                if (handled)
+                {
+                    Event.current.Use();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 5: Handle order float menu if active =====
             if (WindowlessFloatMenuState.IsActive)
             {
@@ -532,7 +592,8 @@ namespace RimWorldAccess
                                     PlantSelectionMenuState.IsActive ||
                                     WindowlessScheduleState.IsActive ||
                                     WindowlessResearchMenuState.IsActive ||
-                                    StorytellerSelectionState.IsActive;
+                                    StorytellerSelectionState.IsActive ||
+                                    PrisonerTabState.IsActive;
 
                 if (!anyMenuActive)
                 {
@@ -780,6 +841,34 @@ namespace RimWorldAccess
                     // Open the inspection menu at the current cursor position
                     WindowlessInspectionState.Open(MapNavigationState.CurrentCursorPosition);
                     return;
+                }
+            }
+
+            // ===== PRIORITY 7.7: Open prisoner tab with P key (if prisoner/slave is selected) =====
+            if (key == KeyCode.P)
+            {
+                // Only open prisoner tab if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                // 4. Prisoner tab is not already active
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode &&
+                    !PrisonerTabState.IsActive)
+                {
+                    // Check if a prisoner or slave is currently visible in the prisoner tab
+                    Pawn prisoner = PrisonerTabPatch.GetCurrentPrisoner();
+                    if (prisoner != null)
+                    {
+                        // Prevent the default P key behavior
+                        Event.current.Use();
+
+                        // Open the prisoner tab
+                        PrisonerTabState.Open(prisoner);
+                        return;
+                    }
                 }
             }
 
