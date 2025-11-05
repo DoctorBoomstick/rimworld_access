@@ -383,8 +383,7 @@ namespace RimWorldAccess
                 string label = item.Label.StripTags();
 
                 // Build full announcement
-                string announcement = $"{indent}{expandIndicator}{label}\n" +
-                                    $"Item {selectedIndex + 1} of {visibleItems.Count}";
+                string announcement = $"{indent}{expandIndicator}{label}";
 
                 if (!string.IsNullOrEmpty(helpText))
                 {
