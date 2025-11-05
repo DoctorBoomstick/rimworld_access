@@ -157,6 +157,61 @@ Escape        Cancel changes and close
 
 
 
+ANIMALS MENU F4
+---------------------------------
+Comprehensive keyboard-accessible interface for managing all colony animals. Access all
+animal information and settings without requiring the mouse.
+
+Navigation:
+Up/Down       Navigate between animals in the list
+Left/Right    Navigate between property columns for current animal
+Enter         Toggle checkboxes or open dropdown menus for current property
+S             Sort by current column (toggles ascending/descending)
+Escape        Close animals menu
+
+Available Columns (20+ total):
+- Name: Animal's name and species
+- Bond: Bonded colonist relationship
+- Master: Assigned master (dropdown to select colonist)
+- Slaughter: Mark for slaughter (checkbox)
+- Gender: Male/Female/None
+- Life Stage: Baby/Juvenile/Adult
+- Age: Years old
+- Pregnant: Pregnancy status
+- Training: All available trainings (Obedience, Release, Rescue, Haul, etc.)
+  * Each training shows status with description
+  * Announces prerequisites if not met
+  * Shows training progress for partially trained skills
+- Follow Drafted: Follow master when drafted (checkbox)
+- Follow Fieldwork: Follow colonists doing fieldwork (checkbox)
+- Allowed Area: Movement restriction (dropdown)
+- Medical Care: Medical care level (dropdown)
+- Food Restriction: Food policy (dropdown)
+- Release to Wild: Mark for release (checkbox)
+
+Smart Announcements:
+- Full context (animal name + property) announced when:
+  * Opening menu or changing animals (Up/Down)
+  * After sorting (since animal position may change)
+- Concise updates (property only) announced when:
+  * Navigating between properties (Left/Right)
+  * After toggling checkboxes or selecting from menus
+
+Examples:
+Opening or selecting new animal:
+  "Husky 1 (Husky) - Master: John"
+
+Navigating properties:
+  "Obedience: Trained - The animal will follow its master when drafted."
+  "Slaughter: Not marked - Designate this animal for slaughter."
+
+After toggling:
+  "Slaughter: Marked for slaughter - Designate this animal for slaughter."
+
+Training with prerequisites:
+  "Release: Disabled - Needs Obedience first - The animal will be released on command."
+
+
 COLONIST ACTIONS
 ----------------
 ]             Open order menu (includes draft mode orders like Move, Attack)

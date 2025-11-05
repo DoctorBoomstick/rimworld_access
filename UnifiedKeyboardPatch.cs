@@ -476,6 +476,15 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 4.74: Handle animals menu if active =====
+            if (AnimalsMenuState.IsActive)
+            {
+                AnimalsMenuState.HandleInput();
+                // AnimalsMenuState.HandleInput() already consumes events internally
+                Event.current.Use();
+                return;
+            }
+
             // ===== PRIORITY 4.75: Handle jump menu if active =====
             if (JumpMenuState.IsActive)
             {

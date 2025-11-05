@@ -58,7 +58,8 @@ namespace RimWorldAccess
                 RefuelableComponentState.IsActive ||
                 BreakdownableComponentState.IsActive ||
                 DoorControlState.IsActive ||
-                ForbidControlState.IsActive;
+                ForbidControlState.IsActive ||
+                AnimalsMenuState.IsActive;
         }
 
         /// <summary>
