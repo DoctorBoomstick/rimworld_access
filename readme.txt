@@ -128,8 +128,8 @@ Shift+3       Set time speed to Superfast (with sound feedback)
 Space         Pause/unpause game
 
 
-BUILD SYSTEM (Press A)
-----------------------
+BUILD SYSTEM (Press Tab)
+-------------------------
 1. Select category (Orders, Structure, Production, etc.)
 2. Select build tool (Wall, Door, Bed, etc.)
 3. If required, select material (Wood, Steel, etc.)
@@ -142,8 +142,8 @@ ZONE SYSTEM (Press Z)
 2. Use Arrow Keys to navigate, space to add/remove cells, enter to confirm, or escape to cancel.
 
 
-SCHEDULE MENU (Press S)
-------------------------
+SCHEDULE MENU (Press F2)
+-------------------------
 Manage colonist work schedules across all 24 hours:
 
 Arrow Keys    Navigate grid (Up/Down: pawns, Left/Right: hours)
@@ -219,14 +219,14 @@ R             Toggle draft mode for selected colonist
 Alt+M         Display mood information and thoughts
 Alt+N         Display needs
 Alt+H         Display health
-Alt+W         Open work menu (see Work Menu section below)
 Alt+G         Display gear
-S             Open schedule menu (manage colonist timetables)
-Shift+A       Open assign menu (manage outfits, food, drugs, areas, reading)
+F1            Open work menu (see Work Menu section below)
+F2            Open schedule menu (manage colonist timetables)
+F3            Open assign menu (manage outfits, food, drugs, areas, reading)
 
 
-WORK MENU (Press Alt+W)
------------------------
+WORK MENU (Press F1)
+--------------------
 Manage colonist work assignments with support for both simple mode and manual priorities.
 
 Common Controls:
@@ -253,8 +253,8 @@ Notes:
 - Column reordering (Shift+Up/Down) affects all colonists globally.
 
 
-ASSIGN MENU (Press Shift+A)
-----------------------------
+ASSIGN MENU (Press F3)
+----------------------
 Manage colonist assignments across five policy categories: Outfit, Food Restrictions,
 Drug Policies, Allowed Areas, and Reading Policies (Ideology DLC only).
 
@@ -309,5 +309,6 @@ Enter         Jump to selected item
 OTHER SHORTCUTS
 ---------------
 Delete        Delete selected save file (in save/load menu)
-p      open research project selection menu.
+F6            Open research project selection menu
+F7            Open quest menu (view available, active, and historical quests)
 
