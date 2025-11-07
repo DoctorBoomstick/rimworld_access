@@ -689,6 +689,40 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 4.78: Handle gizmo navigation if active =====
+            if (GizmoNavigationState.IsActive)
+            {
+                bool handled = false;
+
+                if (key == KeyCode.DownArrow || key == KeyCode.RightArrow)
+                {
+                    GizmoNavigationState.SelectNext();
+                    handled = true;
+                }
+                else if (key == KeyCode.UpArrow || key == KeyCode.LeftArrow)
+                {
+                    GizmoNavigationState.SelectPrevious();
+                    handled = true;
+                }
+                else if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                {
+                    GizmoNavigationState.ExecuteSelected();
+                    handled = true;
+                }
+                else if (key == KeyCode.Escape)
+                {
+                    GizmoNavigationState.Close();
+                    ClipboardHelper.CopyToClipboard("Gizmo menu closed");
+                    handled = true;
+                }
+
+                if (handled)
+                {
+                    Event.current.Use();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 4.8: Handle inspection menu if active =====
             if (WindowlessInspectionState.IsActive)
             {
@@ -1094,6 +1128,30 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 7.05: Open gizmo navigation with G key (if pawn or building is selected) =====
+            if (key == KeyCode.G)
+            {
+                // Only open gizmo navigation if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                // 4. Map navigation is initialized (cursor position is valid)
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode &&
+                    MapNavigationState.IsInitialized)
+                {
+                    // Prevent the default G key behavior
+                    Event.current.Use();
+
+                    // Open the gizmo navigation menu
+                    // This will collect gizmos from all selected objects
+                    GizmoNavigationState.Open();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 7.1: Open notification menu with L key (if no menu is active and we're in-game) =====
             if (key == KeyCode.L)
             {
@@ -1270,6 +1328,11 @@ namespace RimWorldAccess
 
                 // Don't process if any dialog or window that prevents camera motion is open
                 if (Find.WindowStack != null && Find.WindowStack.WindowsPreventCameraMotion)
+                    return;
+
+                // IMPORTANT: Don't intercept Enter if targeting mode is active
+                // This allows the targeting system to handle target selection
+                if (Find.Targeter != null && Find.Targeter.IsTargeting)
                     return;
 
                 // Check if map navigation is initialized
