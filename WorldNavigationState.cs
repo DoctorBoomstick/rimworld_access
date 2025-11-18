@@ -16,6 +16,7 @@ namespace RimWorldAccess
         private static bool isActive = false;
         private static bool isInitialized = false;
         private static string lastAnnouncedInfo = "";
+        private static Caravan selectedCaravan = null;
 
         /// <summary>
         /// Gets whether world navigation is currently active.
@@ -101,6 +102,7 @@ namespace RimWorldAccess
             isInitialized = false;
             currentSelectedTile = PlanetTile.Invalid;
             lastAnnouncedInfo = "";
+            selectedCaravan = null;
         }
 
         /// <summary>
@@ -495,6 +497,7 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Opens the order menu for the currently selected caravan (] key).
+        /// Uses the cursor tile as the target location for orders.
         /// </summary>
         public static void GiveCaravanOrders()
         {
@@ -511,12 +514,41 @@ namespace RimWorldAccess
                 return;
             }
 
-            // Get available orders for this caravan at the current tile
-            List<FloatMenuOption> orders = FloatMenuMakerWorld.ChoicesAtFor(currentSelectedTile, caravan);
+            List<FloatMenuOption> orders = new List<FloatMenuOption>();
 
-            if (orders == null || orders.Count == 0)
+            // Add basic "Travel here" option if not at current location
+            if (currentSelectedTile != caravan.Tile)
             {
-                TolkHelper.Speak("No orders available at this location", SpeechPriority.Normal);
+                FloatMenuOption travelOption = new FloatMenuOption(
+                    $"Travel to this tile",
+                    delegate
+                    {
+                        if (caravan.pather != null)
+                        {
+                            caravan.pather.StartPath(currentSelectedTile, null, repathImmediately: false, resetPauseStatus: true);
+                            TolkHelper.Speak($"{caravan.Label} traveling to destination");
+                        }
+                    },
+                    MenuOptionPriority.Default,
+                    null,
+                    null,
+                    0f,
+                    null,
+                    null
+                );
+                orders.Add(travelOption);
+            }
+
+            // Get available orders from world objects at this tile
+            List<FloatMenuOption> worldObjectOrders = FloatMenuMakerWorld.ChoicesAtFor(currentSelectedTile, caravan);
+            if (worldObjectOrders != null && worldObjectOrders.Count > 0)
+            {
+                orders.AddRange(worldObjectOrders);
+            }
+
+            if (orders.Count == 0)
+            {
+                TolkHelper.Speak("No orders available - already at this location", SpeechPriority.Normal);
                 return;
             }
 
@@ -531,7 +563,98 @@ namespace RimWorldAccess
 
             // Open windowless float menu with caravan orders
             WindowlessFloatMenuState.Open(enabledOrders, colonistOrders: false);
-            TolkHelper.Speak($"Caravan orders: {enabledOrders.Count} options available");
+            TolkHelper.Speak($"{caravan.Label} orders: {enabledOrders.Count} options available");
+        }
+
+        /// <summary>
+        /// Cycles to the next player caravan (for order-giving).
+        /// Does not move the map cursor.
+        /// </summary>
+        public static void CycleToNextCaravan()
+        {
+            if (!isInitialized)
+                return;
+
+            List<Caravan> playerCaravans = Find.WorldObjects?.Caravans?
+                .Where(c => c.Faction == Faction.OfPlayer)
+                .OrderBy(c => c.Label)
+                .ToList();
+
+            if (playerCaravans == null || playerCaravans.Count == 0)
+            {
+                TolkHelper.Speak("No player caravans found", SpeechPriority.Normal);
+                selectedCaravan = null;
+                return;
+            }
+
+            // Find current index
+            int currentIndex = -1;
+            if (selectedCaravan != null)
+            {
+                currentIndex = playerCaravans.IndexOf(selectedCaravan);
+            }
+
+            // Move to next caravan
+            int nextIndex = (currentIndex + 1) % playerCaravans.Count;
+            selectedCaravan = playerCaravans[nextIndex];
+
+            // Sync with game's selection system
+            if (Find.WorldSelector != null)
+            {
+                Find.WorldSelector.ClearSelection();
+                Find.WorldSelector.Select(selectedCaravan);
+            }
+
+            // Announce caravan
+            string announcement = $"{selectedCaravan.Label}, {nextIndex + 1} of {playerCaravans.Count}";
+            TolkHelper.Speak(announcement);
+        }
+
+        /// <summary>
+        /// Cycles to the previous player caravan (for order-giving).
+        /// Does not move the map cursor.
+        /// </summary>
+        public static void CycleToPreviousCaravan()
+        {
+            if (!isInitialized)
+                return;
+
+            List<Caravan> playerCaravans = Find.WorldObjects?.Caravans?
+                .Where(c => c.Faction == Faction.OfPlayer)
+                .OrderBy(c => c.Label)
+                .ToList();
+
+            if (playerCaravans == null || playerCaravans.Count == 0)
+            {
+                TolkHelper.Speak("No player caravans found", SpeechPriority.Normal);
+                selectedCaravan = null;
+                return;
+            }
+
+            // Find current index
+            int currentIndex = -1;
+            if (selectedCaravan != null)
+            {
+                currentIndex = playerCaravans.IndexOf(selectedCaravan);
+            }
+
+            // Move to previous caravan
+            int prevIndex = currentIndex - 1;
+            if (prevIndex < 0)
+                prevIndex = playerCaravans.Count - 1;
+
+            selectedCaravan = playerCaravans[prevIndex];
+
+            // Sync with game's selection system
+            if (Find.WorldSelector != null)
+            {
+                Find.WorldSelector.ClearSelection();
+                Find.WorldSelector.Select(selectedCaravan);
+            }
+
+            // Announce caravan
+            string announcement = $"{selectedCaravan.Label}, {prevIndex + 1} of {playerCaravans.Count}";
+            TolkHelper.Speak(announcement);
         }
 
         /// <summary>
@@ -539,10 +662,17 @@ namespace RimWorldAccess
         /// </summary>
         public static Caravan GetSelectedCaravan()
         {
-            if (!isInitialized || !currentSelectedTile.Valid)
+            if (!isInitialized)
                 return null;
 
-            // Check if there's a caravan at the current tile
+            // Return the explicitly selected caravan if set
+            if (selectedCaravan != null)
+                return selectedCaravan;
+
+            // Otherwise, check if there's a caravan at the current tile
+            if (!currentSelectedTile.Valid)
+                return null;
+
             var worldObjects = Find.WorldObjects?.ObjectsAt(currentSelectedTile);
             if (worldObjects == null)
                 return null;

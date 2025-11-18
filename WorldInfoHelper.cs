@@ -72,9 +72,23 @@ namespace RimWorldAccess
                             }
                         }
                     }
-                    else
+
+                    // Check for caravans on this tile (regardless of settlement presence)
+                    Caravan caravan = objectsAtTile.OfType<Caravan>().FirstOrDefault();
+                    if (caravan != null)
                     {
-                        // List other world objects
+                        summary.Append($", {caravan.Label}");
+
+                        // Add faction info for caravan
+                        if (caravan.Faction != null && caravan.Faction != Faction.OfPlayer)
+                        {
+                            summary.Append($" ({caravan.Faction.Name})");
+                        }
+                    }
+
+                    // If no settlement or caravan, list other world objects
+                    if (settlement == null && caravan == null)
+                    {
                         WorldObject firstObject = objectsAtTile.FirstOrDefault();
                         if (firstObject != null)
                         {

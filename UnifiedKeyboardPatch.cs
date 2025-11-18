@@ -33,6 +33,16 @@ namespace RimWorldAccess
             if (key == KeyCode.None)
                 return;
 
+            // ===== PRIORITY 0: Handle caravan stats viewer if active (must be before key blocking) =====
+            if (CaravanStatsState.IsActive)
+            {
+                if (CaravanStatsState.HandleInput(key))
+                {
+                    Event.current.Use();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 0: Handle settlement browser in world view (must be before key blocking) =====
             if (SettlementBrowserState.IsActive)
             {
@@ -83,7 +93,7 @@ namespace RimWorldAccess
                 }
             }
 
-            // ===== PRIORITY 0.5: Handle world navigation special keys (Home/End/PageUp/PageDown) =====
+            // ===== PRIORITY 0.5: Handle world navigation special keys (Home/End/PageUp/PageDown/Comma/Period) =====
             // Allow these keys when choosing destination, but not when in the formation dialog itself
             if (WorldNavigationState.IsActive && !SettlementBrowserState.IsActive &&
                 (!CaravanFormationState.IsActive || CaravanFormationState.IsChoosingDestination))
@@ -110,6 +120,16 @@ namespace RimWorldAccess
                     WorldNavigationState.CycleToPreviousSettlement();
                     handled = true;
                 }
+                else if (key == KeyCode.Period && !Event.current.shift && !Event.current.control && !Event.current.alt)
+                {
+                    WorldNavigationState.CycleToNextCaravan();
+                    handled = true;
+                }
+                else if (key == KeyCode.Comma && !Event.current.shift && !Event.current.control && !Event.current.alt)
+                {
+                    WorldNavigationState.CycleToPreviousCaravan();
+                    handled = true;
+                }
 
                 if (handled)
                 {
@@ -120,7 +140,8 @@ namespace RimWorldAccess
 
             // ===== EARLY BLOCK: If in world view, block most map-specific keys =====
             // Don't block when choosing destination (allow map interaction)
-            if (WorldNavigationState.IsActive && !CaravanFormationState.IsActive)
+            // Don't block Enter/Escape when menus are active (need them for menu navigation)
+            if (WorldNavigationState.IsActive && !CaravanFormationState.IsActive && !WindowlessFloatMenuState.IsActive)
             {
                 // Block all map-specific keys (settlement browser is handled in WorldNavigationPatch with High priority)
                 if (key == KeyCode.I || key == KeyCode.A || key == KeyCode.Z ||

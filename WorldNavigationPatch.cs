@@ -114,6 +114,9 @@ namespace RimWorldAccess
                 return;
             }
 
+            // Note: Comma and Period keys for caravan cycling are handled in UnifiedKeyboardPatch
+            // at a higher priority to prevent colonist selection from intercepting them
+
             // Handle S key - open settlement browser
             if (key == KeyCode.S && !shift && !ctrl && !alt)
             {
@@ -246,7 +249,7 @@ namespace RimWorldAccess
 
             // Get tile info
             string tileInfo = WorldInfoHelper.GetTileSummary(tile);
-            string instructions = "Arrows: Navigate | Home: Home Base | End: Caravan | S: Settlements | I: Details | C: Form Caravan | ]: Orders";
+            string instructions = "Arrows: Navigate | Home: Home | End: Caravan | ,/.: Cycle Caravans | S: Settlements | I: Details | C: Form | ]: Orders";
 
             Rect infoRect = new Rect(overlayX, overlayY + 15f, overlayWidth, 30f);
             Rect instructionsRect = new Rect(overlayX, overlayY + 45f, overlayWidth, 25f);
