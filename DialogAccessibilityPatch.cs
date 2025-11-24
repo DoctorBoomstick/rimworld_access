@@ -5,96 +5,104 @@ using System.Reflection;
 
 namespace RimWorldAccess
 {
-    [HarmonyPatch(typeof(Dialog_NodeTree))]
-    [HarmonyPatch("DoWindowContents")]
-    public class DialogAccessibilityPatch
+    // Patch the Window base class's InnerWindowOnGUI method to intercept KeyDown events
+    // before they're consumed by the window focus check
+    [HarmonyPatch(typeof(Window), "InnerWindowOnGUI")]
+    public class DialogAccessibilityPatch_InnerWindowOnGUI
     {
-        private static readonly Color HighlightColor = new Color(1f, 1f, 0f, 0.5f);
-
-        // Prefix to handle keyboard navigation BEFORE RimWorld processes input
         [HarmonyPrefix]
-        static void Prefix(Dialog_NodeTree __instance)
+        static void Prefix(Window __instance)
         {
+            // Only handle Dialog_NodeTree instances
+            if (!(__instance is Dialog_NodeTree dialogInstance))
+            {
+                return;
+            }
+
+            // Only process KeyDown events
+            if (Event.current.type != EventType.KeyDown)
+            {
+                return;
+            }
+
             // Initialize navigation state for this dialog
-            DialogNavigationState.Initialize(__instance);
+            DialogNavigationState.Initialize(dialogInstance);
 
             // Get the current node using reflection
             FieldInfo curNodeField = typeof(Dialog_NodeTree).GetField("curNode", BindingFlags.NonPublic | BindingFlags.Instance);
             if (curNodeField == null)
             {
-                MelonLoader.MelonLogger.Msg("Failed to get curNode field");
                 return;
             }
 
-            DiaNode curNode = (DiaNode)curNodeField.GetValue(__instance);
+            DiaNode curNode = (DiaNode)curNodeField.GetValue(dialogInstance);
             if (curNode == null)
             {
                 return;
             }
 
-            // Handle keyboard navigation BEFORE RimWorld's window system processes events
-            if (Event.current.type == EventType.KeyDown)
+            int optionCount = curNode.options.Count;
+            int selectedIndex = DialogNavigationState.GetSelectedIndex();
+
+            if (Event.current.keyCode == KeyCode.UpArrow)
             {
-                int optionCount = curNode.options.Count;
-                int selectedIndex = DialogNavigationState.GetSelectedIndex();
+                DialogNavigationState.MoveUp(optionCount);
+                selectedIndex = DialogNavigationState.GetSelectedIndex();
 
-                if (Event.current.keyCode == KeyCode.UpArrow)
+                // Read the newly selected option
+                if (selectedIndex >= 0 && selectedIndex < optionCount)
                 {
-                    DialogNavigationState.MoveUp(optionCount);
-                    selectedIndex = DialogNavigationState.GetSelectedIndex();
-
-                    // Read the newly selected option
-                    if (selectedIndex >= 0 && selectedIndex < optionCount)
-                    {
-                        string optionText = GetOptionText(curNode.options[selectedIndex]);
-                        TolkHelper.Speak(optionText);
-                        MelonLoader.MelonLogger.Msg($"Selected option {selectedIndex}: {optionText}");
-                    }
-
-                    Event.current.Use();
+                    string optionText = DialogAccessibilityPatch_DoWindowContents.GetOptionText(curNode.options[selectedIndex]);
+                    TolkHelper.Speak(optionText);
                 }
-                else if (Event.current.keyCode == KeyCode.DownArrow)
+
+                Event.current.Use();
+            }
+            else if (Event.current.keyCode == KeyCode.DownArrow)
+            {
+                DialogNavigationState.MoveDown(optionCount);
+                selectedIndex = DialogNavigationState.GetSelectedIndex();
+
+                // Read the newly selected option
+                if (selectedIndex >= 0 && selectedIndex < optionCount)
                 {
-                    DialogNavigationState.MoveDown(optionCount);
-                    selectedIndex = DialogNavigationState.GetSelectedIndex();
-
-                    // Read the newly selected option
-                    if (selectedIndex >= 0 && selectedIndex < optionCount)
-                    {
-                        string optionText = GetOptionText(curNode.options[selectedIndex]);
-                        TolkHelper.Speak(optionText);
-                        MelonLoader.MelonLogger.Msg($"Selected option {selectedIndex}: {optionText}");
-                    }
-
-                    Event.current.Use();
+                    string optionText = DialogAccessibilityPatch_DoWindowContents.GetOptionText(curNode.options[selectedIndex]);
+                    TolkHelper.Speak(optionText);
                 }
-                else if (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter)
+
+                Event.current.Use();
+            }
+            else if (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter)
+            {
+                // Activate the selected option
+                if (selectedIndex >= 0 && selectedIndex < optionCount)
                 {
-                    // Activate the selected option
-                    if (selectedIndex >= 0 && selectedIndex < optionCount)
+                    DiaOption selectedOption = curNode.options[selectedIndex];
+
+                    // Call the Activate method using reflection
+                    MethodInfo activateMethod = typeof(DiaOption).GetMethod("Activate", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (activateMethod != null)
                     {
-                        DiaOption selectedOption = curNode.options[selectedIndex];
+                        // Make sure the option has a reference to the dialog
+                        selectedOption.dialog = dialogInstance;
+                        activateMethod.Invoke(selectedOption, null);
 
-                        // Call the Activate method using reflection
-                        MethodInfo activateMethod = typeof(DiaOption).GetMethod("Activate", BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (activateMethod != null)
-                        {
-                            // Make sure the option has a reference to the dialog
-                            selectedOption.dialog = __instance;
-                            activateMethod.Invoke(selectedOption, null);
-                            MelonLoader.MelonLogger.Msg($"Activated option {selectedIndex}");
-
-                            // Reset state after activation
-                            DialogNavigationState.Reset();
-                        }
+                        // Reset state after activation
+                        DialogNavigationState.Reset();
                     }
-
-                    Event.current.Use();
                 }
+
+                Event.current.Use();
             }
         }
+    }
 
-        // Postfix to announce dialog text and draw visual highlight
+    // Patch DoWindowContents for visual feedback and text announcement
+    [HarmonyPatch(typeof(Dialog_NodeTree), "DoWindowContents")]
+    public class DialogAccessibilityPatch_DoWindowContents
+    {
+        private static readonly Color HighlightColor = new Color(1f, 1f, 0f, 0.5f);
+
         [HarmonyPostfix]
         static void Postfix(Dialog_NodeTree __instance, Rect inRect)
         {
@@ -117,19 +125,10 @@ namespace RimWorldAccess
                 string textToRead = curNode.text.ToString();
                 TolkHelper.Speak(textToRead);
                 DialogNavigationState.MarkTextAsRead();
-                MelonLoader.MelonLogger.Msg($"Dialog text read: {textToRead.Substring(0, Mathf.Min(50, textToRead.Length))}...");
             }
 
             // Draw highlight on selected option
             DrawOptionHighlight(__instance, inRect, curNode);
-        }
-
-        // Postfix to reset state when dialog closes
-        [HarmonyPatch(typeof(Dialog_NodeTree), "PostClose")]
-        [HarmonyPostfix]
-        static void PostClose_Postfix()
-        {
-            DialogNavigationState.Reset();
         }
 
         private static void DrawOptionHighlight(Dialog_NodeTree dialog, Rect inRect, DiaNode curNode)
@@ -195,7 +194,7 @@ namespace RimWorldAccess
             GUI.color = prevColor;
         }
 
-        private static string GetOptionText(DiaOption option)
+        public static string GetOptionText(DiaOption option)
         {
             // Get the text field using reflection
             FieldInfo textField = typeof(DiaOption).GetField("text", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -212,6 +211,17 @@ namespace RimWorldAccess
                 return text;
             }
             return "Unknown";
+        }
+    }
+
+    // Postfix to reset state when dialog closes
+    [HarmonyPatch(typeof(Dialog_NodeTree), "PostClose")]
+    public class DialogAccessibilityPatch_PostClose
+    {
+        [HarmonyPostfix]
+        static void Postfix()
+        {
+            DialogNavigationState.Reset();
         }
     }
 }

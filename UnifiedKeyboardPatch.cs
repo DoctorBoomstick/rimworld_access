@@ -33,6 +33,28 @@ namespace RimWorldAccess
             if (key == KeyCode.None)
                 return;
 
+            // ===== EARLY CHECK: Skip arrow keys and Enter if Dialog_NodeTree is open =====
+            // DialogAccessibilityPatch handles keyboard navigation for Dialog_NodeTree windows
+            if (Find.WindowStack != null)
+            {
+                // Check if any Dialog_NodeTree window is currently open
+                foreach (var window in Find.WindowStack.Windows)
+                {
+                    if (window is Dialog_NodeTree)
+                    {
+                        // Let arrow keys and Enter pass through to DialogAccessibilityPatch
+                        if (key == KeyCode.UpArrow || key == KeyCode.DownArrow ||
+                            key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                        {
+                            MelonLoader.MelonLogger.Msg($"[UnifiedKeyboardPatch] Dialog_NodeTree open, letting key {key} pass through");
+                            // Don't consume these keys - let DialogAccessibilityPatch handle them
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
+
             // ===== PRIORITY 0: Handle caravan stats viewer if active (must be before key blocking) =====
             if (CaravanStatsState.IsActive)
             {
