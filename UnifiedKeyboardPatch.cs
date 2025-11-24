@@ -10,7 +10,7 @@ namespace RimWorldAccess
 {
     /// <summary>
     /// Unified Harmony patch for UIRoot.UIRootOnGUI to handle all keyboard accessibility features.
-    /// Handles: Escape key for pause menu, Enter key for building inspection/beds, ] key for colonist orders, I key for inspection menu, J key for scanner, L key for notification menu, F7 key for quest menu, Alt+M for mood info, Alt+H for health info, Alt+N for needs info, Alt+F for unforbid all items, F2 for schedule, F3 for assign, F6 for research, and all windowless menu navigation.
+    /// Handles: Escape key for pause menu, Enter key for building inspection/beds, ] key for colonist orders, I key for inspection menu, J key for scanner, L key for notification menu, F7 key for quest menu, Alt+M for mood info, Alt+H for health info, Alt+N for needs info, Alt+F for unforbid all items, Shift+C for reform caravan (temporary maps), F2 for schedule, F3 for assign, F6 for research, and all windowless menu navigation.
     /// Note: Dialog navigation (including research completion dialogs) is handled by DialogAccessibilityPatch.
     /// </summary>
     [HarmonyPatch(typeof(UIRoot))]
@@ -1182,6 +1182,28 @@ namespace RimWorldAccess
                     UnforbidAllItems();
 
                     // Prevent the default F key behavior
+                    Event.current.Use();
+                    return;
+                }
+            }
+
+            // ===== PRIORITY 6.54: Reform caravan with Shift+C (temporary maps only) =====
+            if (key == KeyCode.C && Event.current.shift)
+            {
+                // Only reform caravan if:
+                // 1. We're in gameplay (not at main menu)
+                // 2. No windows are preventing camera motion (means a dialog is open)
+                // 3. Not in zone creation mode
+                // 4. On a map (not in world view)
+                if (Current.ProgramState == ProgramState.Playing &&
+                    Find.CurrentMap != null &&
+                    (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
+                    !ZoneCreationState.IsInCreationMode)
+                {
+                    // Trigger caravan reformation
+                    CaravanFormationState.TriggerReformation();
+
+                    // Prevent the default C key behavior
                     Event.current.Use();
                     return;
                 }

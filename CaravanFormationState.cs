@@ -41,6 +41,64 @@ namespace RimWorldAccess
         public static bool IsChoosingDestination => isChoosingDestination;
 
         /// <summary>
+        /// Triggers caravan reformation from the current map (for temporary encounter maps after ambushes).
+        /// This checks if the current map is a temporary map and opens Dialog_FormCaravan with reform=true.
+        /// </summary>
+        public static void TriggerReformation()
+        {
+            Map currentMap = Find.CurrentMap;
+
+            if (currentMap == null)
+            {
+                TolkHelper.Speak("No map loaded", SpeechPriority.High);
+                return;
+            }
+
+            // Check if this is a temporary map that requires reformation
+            if (currentMap.IsPlayerHome)
+            {
+                TolkHelper.Speak("Cannot reform caravan from home settlement. Use world map to form new caravans.", SpeechPriority.High);
+                return;
+            }
+
+            // Get the FormCaravanComp from the map's parent world object
+            MapParent mapParent = currentMap.Parent;
+            if (mapParent == null)
+            {
+                TolkHelper.Speak("Map has no parent world object", SpeechPriority.High);
+                return;
+            }
+
+            FormCaravanComp formCaravanComp = mapParent.GetComponent<FormCaravanComp>();
+            if (formCaravanComp == null)
+            {
+                TolkHelper.Speak("This map does not support caravan reformation", SpeechPriority.High);
+                return;
+            }
+
+            // Check if reformation is allowed (no active threats, etc.)
+            if (!formCaravanComp.CanFormOrReformCaravanNow)
+            {
+                // Try to get the reason why reformation is blocked
+                if (GenHostility.AnyHostileActiveThreatToPlayer(currentMap, countDormantPawnsAsHostile: false))
+                {
+                    TolkHelper.Speak("Cannot reform caravan while enemies are present", SpeechPriority.High);
+                }
+                else
+                {
+                    TolkHelper.Speak("Cannot reform caravan at this time", SpeechPriority.High);
+                }
+                return;
+            }
+
+            // Open Dialog_FormCaravan in reform mode
+            Dialog_FormCaravan reformDialog = new Dialog_FormCaravan(currentMap, reform: true);
+            Find.WindowStack.Add(reformDialog);
+
+            TolkHelper.Speak("Opening caravan reformation dialog", SpeechPriority.Normal);
+        }
+
+        /// <summary>
         /// Opens keyboard navigation for the specified Dialog_FormCaravan.
         /// </summary>
         public static void Open(Dialog_FormCaravan dialog)
