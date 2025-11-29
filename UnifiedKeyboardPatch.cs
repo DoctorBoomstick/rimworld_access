@@ -1002,6 +1002,13 @@ namespace RimWorldAccess
                 else if (key == KeyCode.Escape)
                 {
                     WindowlessFloatMenuState.Close();
+
+                    // If architect mode is active (category/tool/material selection), also reset it
+                    if (ArchitectState.IsActive && !ArchitectState.IsInPlacementMode)
+                    {
+                        ArchitectState.Reset();
+                    }
+
                     TolkHelper.Speak("Menu closed");
                     handled = true;
                 }
