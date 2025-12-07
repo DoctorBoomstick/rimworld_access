@@ -42,6 +42,43 @@ namespace RimWorldAccess
                 return;
             }
 
+            // ===== PRIORITY -0.5: Block game hotkeys if windowless dialog is active =====
+            // WindowlessDialogInputPatch handles navigation keys for the dialog
+            // We need to block game-specific keys (R for draft, F for forbid, etc.)
+            if (WindowlessDialogState.IsActive)
+            {
+                // If editing a text field, block EVERYTHING except the text field control keys
+                // Text input characters will be handled by WindowlessDialogInputPatch
+                if (WindowlessDialogState.IsEditingTextField)
+                {
+                    // Only allow Enter, Escape, Backspace, Delete for text field control
+                    // Block ALL other keys including character input (will be handled by WindowlessDialogInputPatch)
+                    if (key != KeyCode.Return && key != KeyCode.KeypadEnter &&
+                        key != KeyCode.Escape && key != KeyCode.Backspace &&
+                        key != KeyCode.Delete)
+                    {
+                        // Consume the event to prevent it from being processed by RimWorld's keybinding system
+                        // This is critical for keys like Space (pause/unpause), F5 (save), and other game hotkeys
+                        Event.current.Use();
+                        return;
+                    }
+                }
+                else
+                {
+                    // Not editing - allow arrow keys and Enter/Escape for dialog navigation
+                    // Block everything else (R, F, A, Z, Tab, etc.)
+                    if (key != KeyCode.UpArrow && key != KeyCode.DownArrow &&
+                        key != KeyCode.LeftArrow && key != KeyCode.RightArrow &&
+                        key != KeyCode.Return && key != KeyCode.KeypadEnter &&
+                        key != KeyCode.Escape)
+                    {
+                        // Consume the event to prevent game actions during dialog
+                        Event.current.Use();
+                        return;
+                    }
+                }
+            }
+
             // ===== EARLY CHECK: Skip arrow keys and Enter if Dialog_NodeTree is open =====
             // DialogAccessibilityPatch handles keyboard navigation for Dialog_NodeTree windows
             if (Find.WindowStack != null)

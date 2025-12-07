@@ -26,6 +26,7 @@ namespace RimWorldAccess
             // Note: Scanner is NOT included here because it doesn't suppress map navigation
             MapNavigationState.SuppressMapNavigation =
                 WorldNavigationState.IsActive ||
+                WindowlessDialogState.IsActive ||
                 WindowlessFloatMenuState.IsActive ||
                 WindowlessPauseMenuState.IsActive ||
                 NotificationMenuState.IsActive ||

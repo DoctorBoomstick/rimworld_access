@@ -77,6 +77,12 @@ namespace RimWorldAccess
             sorter1 = TransferableSorterDefOf.Category;
             sorter2 = TransferableSorterDefOf.MarketValue;
 
+            // Pause the game when trade menu opens
+            if (Current.ProgramState == ProgramState.Playing && Find.TickManager != null)
+            {
+                Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+            }
+
             isActive = true;
             currentCategory = TradeCategory.Currency;
             currentIndex = 0;
