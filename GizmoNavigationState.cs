@@ -15,6 +15,7 @@ namespace RimWorldAccess
         private static bool isActive = false;
         private static int selectedGizmoIndex = 0;
         private static List<Gizmo> availableGizmos = new List<Gizmo>();
+        private static Dictionary<Gizmo, ISelectable> gizmoOwners = new Dictionary<Gizmo, ISelectable>();
         private static bool pawnJustSelected = false;
 
         /// <summary>
@@ -106,11 +107,38 @@ namespace RimWorldAccess
             }
 
             // Collect gizmos from all things at this position
+            // Important: Temporarily select each thing before getting its gizmos,
+            // because some gizmos (like Designator_Install) check if the thing is selected
+            // to determine their Visible property
+            gizmoOwners.Clear();
+
+            // Store the current selection to restore it later
+            var previousSelection = Find.Selector.SelectedObjects.ToList();
+
             foreach (Thing thing in thingsAtPosition)
             {
                 if (thing is ISelectable selectable)
                 {
-                    availableGizmos.AddRange(selectable.GetGizmos());
+                    // Temporarily select this thing so its gizmos' Visible property works correctly
+                    Find.Selector.ClearSelection();
+                    Find.Selector.Select(thing, playSound: false, forceDesignatorDeselect: false);
+
+                    var gizmos = selectable.GetGizmos().ToList();
+                    foreach (Gizmo gizmo in gizmos)
+                    {
+                        availableGizmos.Add(gizmo);
+                        gizmoOwners[gizmo] = selectable;
+                    }
+                }
+            }
+
+            // Restore previous selection (or clear if nothing was selected)
+            Find.Selector.ClearSelection();
+            foreach (var obj in previousSelection)
+            {
+                if (obj is ISelectable selectableObj)
+                {
+                    Find.Selector.Select(selectableObj, playSound: false, forceDesignatorDeselect: false);
                 }
             }
 
@@ -149,6 +177,7 @@ namespace RimWorldAccess
             isActive = false;
             selectedGizmoIndex = 0;
             availableGizmos.Clear();
+            gizmoOwners.Clear();
         }
 
         /// <summary>
@@ -187,6 +216,7 @@ namespace RimWorldAccess
                 return;
 
             Gizmo selectedGizmo = availableGizmos[selectedGizmoIndex];
+            string gizmoLabel = GetGizmoLabel(selectedGizmo);
 
             // Check if disabled
             if (selectedGizmo.Disabled)
@@ -208,24 +238,14 @@ namespace RimWorldAccess
             if (selectedGizmo is Designator designator)
             {
                 // For Designators opened via cursor objects (not selected pawns),
-                // we need to ensure the objects at cursor are actually selected
+                // we need to ensure the correct object is selected
                 // so the Designator has proper context (e.g., Designator_Install needs to know what to reinstall)
-                if (!PawnJustSelected && MapNavigationState.IsInitialized)
+                if (!PawnJustSelected && gizmoOwners.ContainsKey(selectedGizmo) && Find.Selector != null)
                 {
-                    IntVec3 cursorPos = MapNavigationState.CurrentCursorPosition;
-                    List<Thing> thingsAtCursor = cursorPos.GetThingList(Find.CurrentMap);
-
-                    if (thingsAtCursor != null && thingsAtCursor.Count > 0 && Find.Selector != null)
-                    {
-                        Find.Selector.ClearSelection();
-                        foreach (Thing thing in thingsAtCursor)
-                        {
-                            if (thing is ISelectable)
-                            {
-                                Find.Selector.Select(thing, playSound: false, forceDesignatorDeselect: false);
-                            }
-                        }
-                    }
+                    // Select ONLY the specific thing that owns this gizmo
+                    ISelectable owner = gizmoOwners[selectedGizmo];
+                    Find.Selector.ClearSelection();
+                    Find.Selector.Select(owner, playSound: false, forceDesignatorDeselect: false);
                 }
 
                 try
@@ -234,13 +254,21 @@ namespace RimWorldAccess
                     // (Designator_Install does setup like canceling existing blueprints)
                     selectedGizmo.ProcessInput(fakeEvent);
 
-                    // Announce placement mode
-                    TolkHelper.Speak($"{GetGizmoLabel(selectedGizmo)} - Use arrow keys to position, R to rotate, Enter to place, Escape to cancel");
+                    // Validate that the designator was actually selected
+                    if (Find.DesignatorManager != null && Find.DesignatorManager.SelectedDesignator != null)
+                    {
+                        // Announce placement mode
+                        TolkHelper.Speak($"{gizmoLabel} - Use arrow keys to position, R to rotate, Space to place, Escape to cancel");
+                    }
+                    else
+                    {
+                        TolkHelper.Speak($"Error: {gizmoLabel} could not be activated. Check if the item can be placed.", SpeechPriority.High);
+                    }
                 }
                 catch (System.Exception ex)
                 {
                     ModLogger.Error($"Exception in Designator execution: {ex.Message}");
-                    TolkHelper.Speak($"Error executing {GetGizmoLabel(selectedGizmo)}: {ex.Message}", SpeechPriority.High);
+                    TolkHelper.Speak($"Error executing {gizmoLabel}: {ex.Message}", SpeechPriority.High);
                 }
 
                 // Close the gizmo menu AFTER announcing
@@ -251,31 +279,72 @@ namespace RimWorldAccess
             // 2. Command_Toggle - toggle and announce state
             if (selectedGizmo is Command_Toggle toggle)
             {
-                // Execute the toggle
-                selectedGizmo.ProcessInput(fakeEvent);
+                try
+                {
+                    // Execute the toggle
+                    selectedGizmo.ProcessInput(fakeEvent);
 
-                // Announce the new state
-                bool toggleActive = toggle.isActive?.Invoke() ?? false;
-                string state = toggleActive ? "ON" : "OFF";
-                string label = GetGizmoLabel(toggle);
-                TolkHelper.Speak($"{label}: {state}");
+                    // Announce the new state
+                    bool toggleActive = toggle.isActive?.Invoke() ?? false;
+                    string state = toggleActive ? "ON" : "OFF";
+                    string label = GetGizmoLabel(toggle);
+                    TolkHelper.Speak($"{label}: {state}");
+                }
+                catch (System.Exception ex)
+                {
+                    ModLogger.Error($"Exception in Command_Toggle execution: {ex.Message}");
+                    TolkHelper.Speak($"Error executing {gizmoLabel}: {ex.Message}", SpeechPriority.High);
+                }
             }
             else
             {
-                // Execute the command
-                selectedGizmo.ProcessInput(fakeEvent);
-
                 // 3. Command_VerbTarget (weapon attacks) - announce targeting mode
                 if (selectedGizmo is Command_VerbTarget verbTarget)
                 {
-                    string weaponName = verbTarget.ownerThing?.LabelCap ?? "weapon";
-                    string verbLabel = verbTarget.verb?.ReportLabel ?? "attack";
-                    TolkHelper.Speak($"{weaponName} {verbLabel} - Use map navigation to select target, then press Enter");
+                    try
+                    {
+                        // Execute the command
+                        selectedGizmo.ProcessInput(fakeEvent);
+
+                        string weaponName = verbTarget.ownerThing?.LabelCap ?? "weapon";
+                        string verbLabel = verbTarget.verb?.ReportLabel ?? "attack";
+                        TolkHelper.Speak($"{weaponName} {verbLabel} - Use map navigation to select target, then press Enter");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        ModLogger.Error($"Exception in Command_VerbTarget execution: {ex.Message}");
+                        TolkHelper.Speak($"Error executing {gizmoLabel}: {ex.Message}", SpeechPriority.High);
+                    }
                 }
                 // 4. Command_Target - announce targeting mode
                 else if (selectedGizmo is Command_Target)
                 {
-                    TolkHelper.Speak($"{GetGizmoLabel(selectedGizmo)} - Use map navigation to select target, then press Enter");
+                    try
+                    {
+                        // Execute the command
+                        selectedGizmo.ProcessInput(fakeEvent);
+
+                        TolkHelper.Speak($"{gizmoLabel} - Use map navigation to select target, then press Enter");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        ModLogger.Error($"Exception in Command_Target execution: {ex.Message}");
+                        TolkHelper.Speak($"Error executing {gizmoLabel}: {ex.Message}", SpeechPriority.High);
+                    }
+                }
+                // 5. Generic Command
+                else
+                {
+                    try
+                    {
+                        // Execute the command
+                        selectedGizmo.ProcessInput(fakeEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        ModLogger.Error($"Exception in generic Command execution: {ex.Message}");
+                        TolkHelper.Speak($"Error executing {gizmoLabel}: {ex.Message}", SpeechPriority.High);
+                    }
                 }
             }
 

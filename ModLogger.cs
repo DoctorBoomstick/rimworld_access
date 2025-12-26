@@ -26,6 +26,14 @@ namespace RimWorldAccess
         }
 
         /// <summary>
+        /// Log a debug message to MelonLoader console.
+        /// </summary>
+        public static void Debug(string message)
+        {
+            logger?.Msg($"[DEBUG] {message}");
+        }
+
+        /// <summary>
         /// Log a warning to MelonLoader console.
         /// </summary>
         public static void Warning(string message)
