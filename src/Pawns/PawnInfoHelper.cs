@@ -155,14 +155,18 @@ namespace RimWorldAccess
 
                         foreach (var part in injuredParts)
                         {
-                            float healthPercent = part.Health / part.MaxHealth * 100f;
-                            sb.AppendLine($"  {part.Part.LabelCap}: {healthPercent:F0}%.");
+                            sb.AppendLine($"  {part.Part.LabelCap}: {part.Health:F0} / {part.MaxHealth:F0} HP.");
                         }
                     }
 
                     if (wholeBodyConditions.Count > 0)
                     {
-                        sb.AppendLine($"\nConditions: {wholeBodyConditions.Count}.");
+                        sb.AppendLine("\nConditions.");
+
+                        foreach (var condition in wholeBodyConditions)
+                        {
+                            sb.AppendLine($"  {condition.LabelCap}.");
+                        }
                     }
                 }
             }
