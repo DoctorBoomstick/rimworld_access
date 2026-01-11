@@ -117,6 +117,17 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY -0.24: Handle Auto-Slaughter dialog if active =====
+            // Auto-Slaughter is a modal dialog that should take precedence over most other handlers
+            if (AutoSlaughterState.IsActive)
+            {
+                if (AutoSlaughterState.HandleInput(Event.current))
+                {
+                    Event.current.Use();
+                    return;
+                }
+            }
+
             // ===== PRIORITY 0: Handle caravan stats viewer if active (must be before key blocking) =====
             // BUT: Skip if windowless dialog is active - dialogs take absolute priority
             if (CaravanStatsState.IsActive && !WindowlessDialogState.IsActive)
@@ -948,6 +959,16 @@ namespace RimWorldAccess
                     WindowlessScheduleState.PasteSchedule();
                     handled = true;
                 }
+                else if (key == KeyCode.Home)
+                {
+                    WindowlessScheduleState.JumpToFirstHour();
+                    handled = true;
+                }
+                else if (key == KeyCode.End)
+                {
+                    WindowlessScheduleState.JumpToLastHour();
+                    handled = true;
+                }
 
                 if (handled)
                 {
@@ -1624,6 +1645,15 @@ namespace RimWorldAccess
                 else if (key == KeyCode.S && Event.current.alt)
                 {
                     AnimalsMenuState.ToggleSortByCurrentColumn();
+                    handled = true;
+                }
+                // Handle Tab - open auto-slaughter settings
+                else if (key == KeyCode.Tab)
+                {
+                    if (Find.CurrentMap != null)
+                    {
+                        Find.WindowStack.Add(new RimWorld.Dialog_AutoSlaughter(Find.CurrentMap));
+                    }
                     handled = true;
                 }
 
@@ -2674,6 +2704,7 @@ namespace RimWorldAccess
                 // 2. No windows are preventing camera motion (means a dialog is open)
                 // 3. Not in zone creation mode
                 // 4. No accessibility menus are active (they handle their own Escape)
+                // 5. Not in targeting mode (let RimWorld handle Escape to cancel targeting)
                 if (Current.ProgramState == ProgramState.Playing &&
                     Find.CurrentMap != null &&
                     (Find.WindowStack == null || !Find.WindowStack.WindowsPreventCameraMotion) &&
@@ -2681,7 +2712,8 @@ namespace RimWorldAccess
                     !KeyboardHelper.IsAnyAccessibilityMenuActive() &&
                     !QuestLocationsBrowserState.IsActive &&
                     !SettlementBrowserState.IsActive &&
-                    !CaravanStatsState.IsActive)
+                    !CaravanStatsState.IsActive &&
+                    (Find.Targeter == null || !Find.Targeter.IsTargeting))
                 {
                     // Prevent the default escape behavior (opening game's pause menu)
                     Event.current.Use();
