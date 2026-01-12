@@ -793,7 +793,8 @@ namespace RimWorldAccess
                 return;
             }
 
-            if (!tradeable.TraderWillTrade)
+            // In gift mode, any item can be gifted regardless of TraderWillTrade
+            if (!tradeable.TraderWillTrade && !TradeSession.giftMode)
             {
                 TolkHelper.Speak("Trader will not trade this item");
                 return;
@@ -830,7 +831,8 @@ namespace RimWorldAccess
             if (tradeable == null)
                 return;
 
-            if (!tradeable.TraderWillTrade)
+            // In gift mode, any item can be gifted regardless of TraderWillTrade
+            if (!tradeable.TraderWillTrade && !TradeSession.giftMode)
             {
                 TolkHelper.Speak("Trader will not trade this item");
                 return;
@@ -942,7 +944,8 @@ namespace RimWorldAccess
                 return;
             }
 
-            if (!tradeable.TraderWillTrade)
+            // In gift mode, any item can be gifted regardless of TraderWillTrade
+            if (!tradeable.TraderWillTrade && !TradeSession.giftMode)
             {
                 TolkHelper.Speak("Trader will not trade this item");
                 return;
@@ -987,7 +990,8 @@ namespace RimWorldAccess
                 return;
             }
 
-            if (!tradeable.TraderWillTrade)
+            // In gift mode, any item can be gifted regardless of TraderWillTrade
+            if (!tradeable.TraderWillTrade && !TradeSession.giftMode)
             {
                 TolkHelper.Speak("Trader will not trade this item");
                 return;
