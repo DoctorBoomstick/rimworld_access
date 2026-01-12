@@ -36,8 +36,12 @@ namespace RimWorldAccess
             bool hasActiveDesignator = Find.DesignatorManager != null &&
                                       Find.DesignatorManager.SelectedDesignator != null;
 
+            // Check if local map targeting is active (e.g., transport pod landing)
+            bool inTargetingMode = Find.Targeter != null && Find.Targeter.IsTargeting;
+
             // Only active when in architect placement mode OR when a designator is selected (e.g., from gizmos)
-            if (!inArchitectMode && !hasActiveDesignator)
+            // OR when local map targeting is active (transport pod landing)
+            if (!inArchitectMode && !hasActiveDesignator && !inTargetingMode)
                 return;
 
             // Only process keyboard events
@@ -57,6 +61,17 @@ namespace RimWorldAccess
             KeyCode key = Event.current.keyCode;
             bool handled = false;
             bool shiftHeld = Event.current.shift;
+
+            // Handle local map targeting mode (transport pod landing) first
+            if (inTargetingMode)
+            {
+                handled = HandleTargetingModeInput(key, shiftHeld);
+                if (handled)
+                {
+                    Event.current.Use();
+                }
+                return;
+            }
 
             // Get the active designator (from either source)
             Designator activeDesignator = inArchitectMode ?
@@ -104,7 +119,10 @@ namespace RimWorldAccess
                         Rot4 currentRot = (Rot4)rotField.GetValue(designatorPlace);
                         currentRot.Rotate(RotationDirection.Clockwise);
                         rotField.SetValue(designatorPlace, currentRot);
-                        TolkHelper.Speak($"Rotated to {currentRot}");
+
+                        // Build a proper announcement with direction and special info
+                        string announcement = GetDesignatorRotationAnnouncement(designatorPlace, currentRot);
+                        TolkHelper.Speak(announcement);
                     }
                 }
                 handled = true;
@@ -319,6 +337,129 @@ namespace RimWorldAccess
         }
 
         /// <summary>
+        /// Handles keyboard input during local map targeting mode (e.g., transport pod landing).
+        /// Returns true if input was handled.
+        /// </summary>
+        private static bool HandleTargetingModeInput(KeyCode key, bool shiftHeld)
+        {
+            // Space or Enter - confirm target at cursor position
+            if (key == KeyCode.Space || key == KeyCode.Return || key == KeyCode.KeypadEnter)
+            {
+                if (shiftHeld)
+                    return false;
+
+                IntVec3 targetCell = MapNavigationState.CurrentCursorPosition;
+                Map map = Find.CurrentMap;
+
+                if (map == null || !targetCell.InBounds(map))
+                {
+                    TolkHelper.Speak("Invalid target position", SpeechPriority.High);
+                    return true;
+                }
+
+                // Validate landing spot using the game's validation
+                if (!DropCellFinder.IsGoodDropSpot(targetCell, map, allowFogged: false, canRoofPunch: true))
+                {
+                    string reason = GetLandingInvalidReason(targetCell, map);
+                    TolkHelper.Speak($"Cannot land here: {reason}", SpeechPriority.High);
+                    return true;
+                }
+
+                // Create target info and let the targeter process it
+                LocalTargetInfo target = new LocalTargetInfo(targetCell);
+
+                // Get the action BEFORE stopping targeting (StopTargeting clears the action)
+                var actionField = HarmonyLib.AccessTools.Field(typeof(Targeter), "action");
+                System.Action<LocalTargetInfo> action = null;
+                if (actionField != null)
+                {
+                    action = actionField.GetValue(Find.Targeter) as System.Action<LocalTargetInfo>;
+                }
+
+                // Check if we have an action to invoke
+                if (action != null)
+                {
+                    // Stop targeting and invoke the action
+                    Find.Targeter.StopTargeting();
+                    action.Invoke(target);
+                    TolkHelper.Speak($"Landing confirmed at {targetCell.x}, {targetCell.z}", SpeechPriority.Normal);
+                }
+                else
+                {
+                    // No action available - stop targeting but report the error
+                    Find.Targeter.StopTargeting();
+                    TolkHelper.Speak("Error: Could not confirm target. Please try using the mouse.", SpeechPriority.High);
+                }
+
+                return true;
+            }
+
+            // Escape - cancel targeting
+            if (key == KeyCode.Escape)
+            {
+                Find.Targeter.StopTargeting();
+                TolkHelper.Speak("Targeting cancelled", SpeechPriority.Normal);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets a human-readable reason why a landing spot is invalid.
+        /// Note: Thin roofs are VALID - pods punch through them.
+        /// Only thick roofs (overhead mountain) block landing.
+        /// </summary>
+        private static string GetLandingInvalidReason(IntVec3 cell, Map map)
+        {
+            if (map == null || !cell.InBounds(map))
+                return "Out of bounds";
+
+            // Check terrain
+            TerrainDef terrain = cell.GetTerrain(map);
+            if (terrain != null)
+            {
+                if (terrain.IsWater)
+                    return "Water";
+            }
+
+            // Check for thick roof (can't punch through mountain)
+            // Note: Thin roofs are OK - pods punch through
+            RoofDef roof = cell.GetRoof(map);
+            if (roof != null && roof.isThickRoof)
+                return "Overhead mountain";
+
+            // Check if walkable (basic passability)
+            if (!cell.Walkable(map))
+                return "Impassable terrain";
+
+            // Check for buildings/edifices
+            Building building = cell.GetEdifice(map);
+            if (building != null)
+            {
+                // IsClearableFreeBuilding buildings (like conduits) are OK
+                if (!building.IsClearableFreeBuilding)
+                    return building.LabelCap;
+            }
+
+            // Check for fog
+            if (cell.Fogged(map))
+                return "Fogged area";
+
+            // Check for existing skyfallers or transporters
+            List<Thing> things = cell.GetThingList(map);
+            foreach (Thing thing in things)
+            {
+                if (thing is IActiveTransporter)
+                    return "Another transport pod";
+                if (thing is Skyfaller)
+                    return "Incoming skyfaller";
+            }
+
+            return "Invalid spot";
+        }
+
+        /// <summary>
         /// Checks if a designator is a zone/area/cell-based designator.
         /// This includes zones (stockpiles, growing zones), areas (home, roof), and other multi-cell designators.
         /// </summary>
@@ -411,6 +552,14 @@ namespace RimWorldAccess
             }
         }
 
+        /// <summary>
+        /// Gets a rotation announcement for a Designator_Place (used by reinstall gizmo, etc.)
+        /// Delegates to shared ArchitectState method to avoid duplication.
+        /// </summary>
+        private static string GetDesignatorRotationAnnouncement(Designator_Place designatorPlace, Rot4 rotation)
+        {
+            return ArchitectState.GetRotationAnnouncementForDef(designatorPlace.PlacingDef, rotation);
+        }
     }
 
     /// <summary>
@@ -429,10 +578,6 @@ namespace RimWorldAccess
         [HarmonyPriority(Priority.Last)]
         public static void Postfix(CameraDriver __instance)
         {
-            // Only active when in architect placement mode
-            if (!ArchitectState.IsInPlacementMode)
-                return;
-
             // Check if an arrow key was just pressed
             if (Find.CurrentMap == null || !MapNavigationState.IsInitialized)
                 return;
@@ -443,44 +588,46 @@ namespace RimWorldAccess
                                    Input.GetKeyDown(KeyCode.LeftArrow) ||
                                    Input.GetKeyDown(KeyCode.RightArrow);
 
-            if (arrowKeyPressed)
+            if (!arrowKeyPressed)
+                return;
+
+            IntVec3 currentPosition = MapNavigationState.CurrentCursorPosition;
+            Map map = Find.CurrentMap;
+
+            // Skip if in local map targeting mode (transport pod landing)
+            // We don't add extra announcements for targeting - the game handles this
+            if (Find.Targeter != null && Find.Targeter.IsTargeting)
             {
-                IntVec3 currentPosition = MapNavigationState.CurrentCursorPosition;
-                Designator designator = ArchitectState.SelectedDesignator;
+                return;
+            }
 
-                if (designator == null)
-                    return;
+            // Only continue for architect placement mode
+            if (!ArchitectState.IsInPlacementMode)
+                return;
 
-                // Get the last announced info
-                string lastInfo = MapNavigationState.LastAnnouncedInfo;
+            Designator designator = ArchitectState.SelectedDesignator;
 
-                // For multi-cell designators, show if cell is already selected
-                if (!(designator is Designator_Build))
+            if (designator == null)
+                return;
+
+            // Get the last announced info
+            string lastInfo = MapNavigationState.LastAnnouncedInfo;
+
+            // For multi-cell designators (zones, etc.), show if cell is already selected
+            // Don't check placement validity here - only check when user presses Space to place
+            if (!(designator is Designator_Build))
+            {
+                if (ArchitectState.SelectedCells.Contains(currentPosition))
                 {
-                    if (ArchitectState.SelectedCells.Contains(currentPosition))
+                    if (!lastInfo.StartsWith("Selected"))
                     {
-                        if (!lastInfo.StartsWith("Selected"))
-                        {
-                            string modifiedInfo = "Selected, " + lastInfo;
-                            TolkHelper.Speak(modifiedInfo);
-                            MapNavigationState.LastAnnouncedInfo = modifiedInfo;
-                        }
-                    }
-                }
-                else
-                {
-                    // For build designators, announce if placement is valid
-                    AcceptanceReport report = designator.CanDesignateCell(currentPosition);
-
-                    if (!report.Accepted && !string.IsNullOrEmpty(report.Reason))
-                    {
-                        // Append the reason why we can't place here
-                        string modifiedInfo = lastInfo + ", " + report.Reason;
+                        string modifiedInfo = "Selected, " + lastInfo;
                         TolkHelper.Speak(modifiedInfo);
                         MapNavigationState.LastAnnouncedInfo = modifiedInfo;
                     }
                 }
             }
+            // Note: Placement validity is checked when Space is pressed, not on cursor movement
         }
     }
 

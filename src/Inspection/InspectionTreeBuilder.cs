@@ -9,6 +9,24 @@ using Verse.AI;
 namespace RimWorldAccess
 {
     /// <summary>
+    /// Controls what type of inspection tree to build.
+    /// </summary>
+    public enum InspectionMode
+    {
+        /// <summary>
+        /// Full inspection with all actions (operations, drop/consume, job cancellation, etc.)
+        /// </summary>
+        Full,
+
+        /// <summary>
+        /// Read-only inspection showing only data, no modifying actions.
+        /// Used in contexts like caravan formation where you just want to view pawn info.
+        /// </summary>
+        ReadOnly
+    }
+
+
+    /// <summary>
     /// Builds the inspection tree for objects.
     /// </summary>
     public static class InspectionTreeBuilder
@@ -57,7 +75,9 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds the root tree for all objects at a position.
         /// </summary>
-        public static InspectionTreeItem BuildTree(List<object> objects)
+        /// <param name="objects">The objects to inspect.</param>
+        /// <param name="mode">The inspection mode (Full or ReadOnly). Defaults to Full.</param>
+        public static InspectionTreeItem BuildTree(List<object> objects, InspectionMode mode = InspectionMode.Full)
         {
             var root = new InspectionTreeItem
             {
@@ -70,7 +90,7 @@ namespace RimWorldAccess
 
             foreach (var obj in objects)
             {
-                AddChild(root, BuildObjectItem(obj, 0));
+                AddChild(root, BuildObjectItem(obj, 0, mode));
             }
 
             return root;
@@ -79,7 +99,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds a tree item for a single object (pawn, building, etc.).
         /// </summary>
-        private static InspectionTreeItem BuildObjectItem(object obj, int indent)
+        private static InspectionTreeItem BuildObjectItem(object obj, int indent, InspectionMode mode)
         {
             var item = new InspectionTreeItem
             {
@@ -92,7 +112,7 @@ namespace RimWorldAccess
             };
 
             // We'll build children lazily when expanded
-            item.OnActivate = () => BuildObjectChildren(item);
+            item.OnActivate = () => BuildObjectChildren(item, mode);
 
             return item;
         }
@@ -101,7 +121,7 @@ namespace RimWorldAccess
         /// Builds category children for an object when it's expanded.
         /// Uses dynamic tab discovery for Things (pawns, buildings, items).
         /// </summary>
-        private static void BuildObjectChildren(InspectionTreeItem objectItem)
+        private static void BuildObjectChildren(InspectionTreeItem objectItem, InspectionMode mode)
         {
             if (objectItem.Children.Count > 0)
                 return; // Already built
@@ -127,10 +147,15 @@ namespace RimWorldAccess
 
             foreach (var categoryInfo in dynamicCategories)
             {
-                AddChild(objectItem, BuildCategoryItemFromInfo(obj, categoryInfo, objectItem.IndentLevel + 1));
+                // Skip actionable categories in read-only mode
+                if (mode == InspectionMode.ReadOnly && categoryInfo.Handler == TabHandlerType.Action)
+                    continue;
+
+                AddChild(objectItem, BuildCategoryItemFromInfo(obj, categoryInfo, objectItem.IndentLevel + 1, mode));
             }
 
             // Add Info Card action for Things (pawns, buildings, items)
+            // Info Card is read-only so it's available in all modes
             if (obj is Thing thing)
             {
                 var infoCardItem = new InspectionTreeItem
@@ -157,7 +182,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds a tree item from a TabCategoryInfo (dynamic tab discovery).
         /// </summary>
-        private static InspectionTreeItem BuildCategoryItemFromInfo(object obj, TabCategoryInfo categoryInfo, int indent)
+        private static InspectionTreeItem BuildCategoryItemFromInfo(object obj, TabCategoryInfo categoryInfo, int indent, InspectionMode mode = InspectionMode.Full)
         {
             // Use OriginalCategoryName (English) for internal logic
             string categoryKey = categoryInfo.OriginalCategoryName ?? categoryInfo.Name;
@@ -203,7 +228,7 @@ namespace RimWorldAccess
                     {
                         item.IsExpandable = true;
                         item.IsExpanded = false;
-                        item.OnActivate = () => BuildCategoryChildren(item, obj, categoryKey);
+                        item.OnActivate = () => BuildCategoryChildren(item, obj, categoryKey, mode);
                     }
                     else
                     {
@@ -338,7 +363,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds a tree item for a category.
         /// </summary>
-        private static InspectionTreeItem BuildCategoryItem(object obj, string category, int indent)
+        private static InspectionTreeItem BuildCategoryItem(object obj, string category, int indent, InspectionMode mode)
         {
             var item = new InspectionTreeItem
             {
@@ -366,6 +391,7 @@ namespace RimWorldAccess
             else if (IsActionableCategory(obj, category))
             {
                 // This is an actionable category (Bills, Storage, etc.)
+                // Note: In ReadOnly mode, actionable categories are filtered out at the parent level
                 item.IsExpandable = false;
                 item.OnActivate = () => ExecuteCategoryAction(obj, category);
             }
@@ -374,7 +400,7 @@ namespace RimWorldAccess
                 // This category has sub-items (Gear, Skills, etc.)
                 item.IsExpandable = true;
                 item.IsExpanded = false;
-                item.OnActivate = () => BuildCategoryChildren(item, obj, category);
+                item.OnActivate = () => BuildCategoryChildren(item, obj, category, mode);
             }
             else
             {
@@ -646,7 +672,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds children for expandable categories (Gear, Skills, etc.).
         /// </summary>
-        private static void BuildCategoryChildren(InspectionTreeItem categoryItem, object obj, string category)
+        private static void BuildCategoryChildren(InspectionTreeItem categoryItem, object obj, string category, InspectionMode mode)
         {
             if (categoryItem.Children.Count > 0)
                 return; // Already built
@@ -668,7 +694,7 @@ namespace RimWorldAccess
 
             if (category == "Gear")
             {
-                BuildGearChildren(categoryItem, pawn);
+                BuildGearChildren(categoryItem, pawn, mode);
             }
             else if (category == "Skills")
             {
@@ -676,7 +702,7 @@ namespace RimWorldAccess
             }
             else if (category == "Health")
             {
-                BuildHealthChildren(categoryItem, pawn);
+                BuildHealthChildren(categoryItem, pawn, mode);
             }
             else if (category == "Needs")
             {
@@ -704,7 +730,7 @@ namespace RimWorldAccess
             }
             else if (category == "Job Queue")
             {
-                BuildJobQueueChildren(categoryItem, pawn);
+                BuildJobQueueChildren(categoryItem, pawn, mode);
             }
         }
 
@@ -712,7 +738,7 @@ namespace RimWorldAccess
         /// Builds children for Job Queue category.
         /// Shows current job and all queued jobs with delete capability.
         /// </summary>
-        private static void BuildJobQueueChildren(InspectionTreeItem parentItem, Pawn pawn)
+        private static void BuildJobQueueChildren(InspectionTreeItem parentItem, Pawn pawn, InspectionMode mode)
         {
             if (pawn.jobs == null)
                 return;
@@ -755,7 +781,7 @@ namespace RimWorldAccess
                 parentItem.Children.Add(idleItem);
             }
 
-            // Add queued jobs (deletable)
+            // Add queued jobs (deletable in Full mode only)
             var jobQueue = jobTracker.jobQueue;
             if (jobQueue != null && jobQueue.Count > 0)
             {
@@ -784,20 +810,24 @@ namespace RimWorldAccess
                         IsExpandable = false
                     };
 
-                    // Capture the job for the closure
-                    var jobToCancel = queuedJob.job;
-                    var jobLabel = jobReport;
-                    queuedItem.OnDelete = () =>
+                    // Only add delete action in Full mode
+                    if (mode == InspectionMode.Full)
                     {
-                        // Cancel the queued job
-                        jobQueue.Extract(jobToCancel);
-                        TolkHelper.Speak($"Cancelled: {jobLabel}", SpeechPriority.High);
+                        // Capture the job for the closure
+                        var jobToCancel = queuedJob.job;
+                        var jobLabel = jobReport;
+                        queuedItem.OnDelete = () =>
+                        {
+                            // Cancel the queued job
+                            jobQueue.Extract(jobToCancel);
+                            TolkHelper.Speak($"Cancelled: {jobLabel}", SpeechPriority.High);
 
-                        // Rebuild the parent to reflect the change
-                        parentItem.Children.Clear();
-                        BuildJobQueueChildren(parentItem, pawn);
-                        WindowlessInspectionState.RebuildAfterAction();
-                    };
+                            // Rebuild the parent to reflect the change
+                            parentItem.Children.Clear();
+                            BuildJobQueueChildren(parentItem, pawn, mode);
+                            WindowlessInspectionState.RebuildAfterAction();
+                        };
+                    }
 
                     parentItem.Children.Add(queuedItem);
                     queueIndex++;
@@ -808,7 +838,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds children for Gear category.
         /// </summary>
-        private static void BuildGearChildren(InspectionTreeItem parentItem, Pawn pawn)
+        private static void BuildGearChildren(InspectionTreeItem parentItem, Pawn pawn, InspectionMode mode)
         {
             var gearCategories = new[] { "Equipment", "Apparel", "Inventory" };
 
@@ -824,7 +854,7 @@ namespace RimWorldAccess
                     IsExpanded = false
                 };
 
-                gearItem.OnActivate = () => BuildGearItemsChildren(gearItem, pawn, gearCat);
+                gearItem.OnActivate = () => BuildGearItemsChildren(gearItem, pawn, gearCat, mode);
                 AddChild(parentItem, gearItem);
             }
         }
@@ -832,7 +862,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds children for a specific gear category (Equipment/Apparel/Inventory).
         /// </summary>
-        private static void BuildGearItemsChildren(InspectionTreeItem gearCatItem, Pawn pawn, string gearCategory)
+        private static void BuildGearItemsChildren(InspectionTreeItem gearCatItem, Pawn pawn, string gearCategory, InspectionMode mode)
         {
             if (gearCatItem.Children.Count > 0)
                 return; // Already built
@@ -863,11 +893,17 @@ namespace RimWorldAccess
                     Label = gearItem.Label,
                     Data = gearItem,
                     IndentLevel = gearCatItem.IndentLevel + 1,
-                    IsExpandable = true,
+                    // In ReadOnly mode, gear items are not expandable (no actions)
+                    IsExpandable = mode == InspectionMode.Full,
                     IsExpanded = false
                 };
 
-                item.OnActivate = () => BuildGearActionChildren(item, pawn, gearItem);
+                // Only add action activation in Full mode
+                if (mode == InspectionMode.Full)
+                {
+                    item.OnActivate = () => BuildGearActionChildren(item, pawn, gearItem);
+                }
+
                 AddChild(gearCatItem, item);
             }
         }
@@ -1196,40 +1232,45 @@ namespace RimWorldAccess
         /// <summary>
         /// Builds children for Health category.
         /// </summary>
-        private static void BuildHealthChildren(InspectionTreeItem parentItem, Pawn pawn)
+        private static void BuildHealthChildren(InspectionTreeItem parentItem, Pawn pawn, InspectionMode mode)
         {
             if (parentItem.Children.Count > 0)
                 return; // Already built
 
-            // Add Operations option
-            var operationsItem = new InspectionTreeItem
+            // Add Operations option (Full mode only)
+            if (mode == InspectionMode.Full)
             {
-                Type = InspectionTreeItem.ItemType.Action,
-                Label = "Operations",
-                Data = pawn,
-                IndentLevel = parentItem.IndentLevel + 1,
-                IsExpandable = false
-            };
-            operationsItem.OnActivate = () =>
-            {
-                HealthTabState.OpenOperations(pawn);
-            };
-            AddChild(parentItem, operationsItem);
+                var operationsItem = new InspectionTreeItem
+                {
+                    Type = InspectionTreeItem.ItemType.Action,
+                    Label = "Operations",
+                    Data = pawn,
+                    IndentLevel = parentItem.IndentLevel + 1,
+                    IsExpandable = false
+                };
+                operationsItem.OnActivate = () =>
+                {
+                    WindowlessInspectionState.Close();
+                    HealthTabState.OpenOperations(pawn);
+                };
+                AddChild(parentItem, operationsItem);
 
-            // Add Health Settings option
-            var healthSettingsItem = new InspectionTreeItem
-            {
-                Type = InspectionTreeItem.ItemType.Action,
-                Label = "Health Settings",
-                Data = pawn,
-                IndentLevel = parentItem.IndentLevel + 1,
-                IsExpandable = false
-            };
-            healthSettingsItem.OnActivate = () =>
-            {
-                HealthTabState.OpenMedicalSettings(pawn);
-            };
-            AddChild(parentItem, healthSettingsItem);
+                // Add Health Settings option
+                var healthSettingsItem = new InspectionTreeItem
+                {
+                    Type = InspectionTreeItem.ItemType.Action,
+                    Label = "Health Settings",
+                    Data = pawn,
+                    IndentLevel = parentItem.IndentLevel + 1,
+                    IsExpandable = false
+                };
+                healthSettingsItem.OnActivate = () =>
+                {
+                    WindowlessInspectionState.Close();
+                    HealthTabState.OpenMedicalSettings(pawn);
+                };
+                AddChild(parentItem, healthSettingsItem);
+            }
 
             // Add overall health state
             var stateItem = new InspectionTreeItem

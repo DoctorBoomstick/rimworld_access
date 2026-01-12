@@ -213,6 +213,71 @@ namespace RimWorldAccess
         }
 
         /// <summary>
+        /// Gets mood information for the pawn.
+        /// Shows mood level, mood description, and all thoughts affecting mood.
+        /// </summary>
+        public static string GetMoodInfo(Pawn pawn)
+        {
+            if (pawn == null)
+                return "No pawn selected";
+
+            if (pawn.needs?.mood == null)
+                return $"{pawn.LabelShort}: No mood tracker";
+
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine($"{pawn.LabelShort}'s Mood.");
+
+            Need_Mood mood = pawn.needs.mood;
+
+            // Current mood level and description
+            float moodPercentage = mood.CurLevelPercentage * 100f;
+            string moodDescription = mood.MoodString;
+            sb.AppendLine($"Mood: {moodPercentage:F0}% ({moodDescription}).");
+
+            // Get thoughts affecting mood
+            List<Thought> thoughtGroups = new List<Thought>();
+            PawnNeedsUIUtility.GetThoughtGroupsInDisplayOrder(mood, thoughtGroups);
+
+            if (thoughtGroups.Count > 0)
+            {
+                sb.AppendLine($"\nThoughts affecting mood. {thoughtGroups.Count} total.");
+
+                List<Thought> thoughtGroup = new List<Thought>();
+                foreach (Thought group in thoughtGroups)
+                {
+                    mood.thoughts.GetMoodThoughts(group, thoughtGroup);
+
+                    if (thoughtGroup.Count == 0)
+                        continue;
+
+                    Thought leadingThought = PawnNeedsUIUtility.GetLeadingThoughtInGroup(thoughtGroup);
+
+                    if (leadingThought == null || !leadingThought.VisibleInNeedsTab)
+                        continue;
+
+                    float moodOffset = mood.thoughts.MoodOffsetOfGroup(group);
+
+                    string thoughtLabel = leadingThought.LabelCap;
+                    if (thoughtGroup.Count > 1)
+                    {
+                        thoughtLabel = $"{thoughtLabel} x{thoughtGroup.Count}";
+                    }
+
+                    string offsetText = moodOffset.ToString("+0;-0;0");
+                    sb.AppendLine($"  {thoughtLabel}: {offsetText}.");
+
+                    thoughtGroup.Clear();
+                }
+            }
+            else
+            {
+                sb.AppendLine("\nNo thoughts affecting mood.");
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
         /// Gets gear information for the pawn.
         /// Includes equipment, apparel, and inventory items.
         /// </summary>

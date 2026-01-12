@@ -1,79 +1,79 @@
 using HarmonyLib;
 using RimWorld;
+using RimWorld.Planet;
 using Verse;
-using Verse.Sound;
 
 namespace RimWorldAccess
 {
     /// <summary>
-    /// Patches TradeDeal.TryExecute to handle the case where Dialog_Trade doesn't exist.
-    /// When we close the visual Dialog_Trade for windowless trading, RimWorld's TryExecute
-    /// still expects the window to exist for calling FlashSilver() on affordability failures.
-    /// This patch handles that case gracefully.
+    /// Harmony patches for Dialog_Trade to enable keyboard navigation.
+    /// Keeps the dialog open and provides keyboard-accessible trading.
     /// </summary>
-    [HarmonyPatch(typeof(TradeDeal), "TryExecute")]
-    public static class TradeDealTryExecutePatch
+    [HarmonyPatch(typeof(Dialog_Trade))]
+    public static class TradeNavigationPatch
     {
         /// <summary>
-        /// Prefix that handles the affordability check when Dialog_Trade doesn't exist.
+        /// Prefix patch for CaravanArrivalAction_Trade.Arrived to save view state
+        /// BEFORE the game calls CameraJumper.TryJumpAndSelect() which switches the view.
+        /// This ensures we can restore the user to their original location after trading.
         /// </summary>
+        [HarmonyPatch(typeof(CaravanArrivalAction_Trade), "Arrived")]
         [HarmonyPrefix]
-        public static bool Prefix(TradeDeal __instance, ref bool actuallyTraded, ref bool __result)
+        public static void CaravanArrivalAction_Trade_Arrived_Prefix()
         {
-            // Only intervene if we're in windowless trade mode (Dialog_Trade is closed)
-            if (!TradeNavigationState.IsActive)
-                return true; // Let original method run
+            // Save the current view state before RimWorld switches it
+            TradeNavigationState.SaveViewStateBeforeTrade();
+        }
 
-            // Check if Dialog_Trade exists - if it does, let original method handle everything
-            Dialog_Trade tradeWindow = Find.WindowStack.WindowOfType<Dialog_Trade>();
-            if (tradeWindow != null)
-                return true; // Let original method run
-
-            // Dialog_Trade doesn't exist - we need to handle the affordability check ourselves
-            // to prevent null reference when TryExecute tries to call FlashSilver()
-
-            // Check gift mode first (handled differently)
-            if (TradeSession.giftMode)
-                return true; // Let original method run - gift mode doesn't use FlashSilver
-
-            // Check affordability
-            Tradeable currencyTradeable = __instance.CurrencyTradeable;
-            if (currencyTradeable == null || currencyTradeable.CountPostDealFor(Transactor.Colony) < 0)
+        /// <summary>
+        /// Patch for Window.OnCancelKeyPressed to block the game's Escape key handling
+        /// when overlay menus are active over the trade dialog.
+        /// </summary>
+        [HarmonyPatch(typeof(Window), "OnCancelKeyPressed")]
+        [HarmonyPrefix]
+        public static bool Window_OnCancelKeyPressed_Prefix(Window __instance)
+        {
+            // Only intercept for trade dialog
+            if (__instance is Dialog_Trade)
             {
-                // Colony can't afford - announce via screen reader instead of flashing silver
-                TolkHelper.Speak("Cannot complete trade: Colony cannot afford this trade", SpeechPriority.High);
-                SoundDefOf.ClickReject.PlayOneShotOnCamera();
-                actuallyTraded = false;
-                __result = false;
-                return false; // Skip original method
+                // Always block the game's Cancel handling when our trade state is active
+                // This ensures our UnifiedKeyboardPatch handler runs and announces properly
+                if (TradeNavigationState.IsActive)
+                {
+                    return false; // Skip original method - let our handler close with announcement
+                }
             }
 
-            // Affordability check passed - let original method continue
-            return true;
+            return true; // Let original method run
         }
-    }
 
-    /// <summary>
-    /// Patches Dialog_Trade to intercept and replace it with the windowless trade interface.
-    /// </summary>
-    [HarmonyPatch(typeof(Dialog_Trade), "PostOpen")]
-    public static class TradeNavigationPatch_PostOpen
-    {
-        private static bool hasIntercepted = false;
+        /// <summary>
+        /// Patch for Window.OnAcceptKeyPressed to block the game's Enter key handling.
+        /// By default, Window.closeOnAccept is true, which closes the dialog on Enter.
+        /// We need to block this so our Enter key handling works.
+        /// </summary>
+        [HarmonyPatch(typeof(Window), "OnAcceptKeyPressed")]
+        [HarmonyPrefix]
+        public static bool Window_OnAcceptKeyPressed_Prefix(Window __instance)
+        {
+            // Only intercept for trade dialog when our state is active
+            if (__instance is Dialog_Trade && TradeNavigationState.IsActive)
+            {
+                // Always block the game's Accept handling - we handle Enter ourselves
+                return false;
+            }
+
+            return true; // Let original method run
+        }
 
         /// <summary>
         /// Postfix patch that runs after Dialog_Trade.PostOpen().
-        /// Closes the visual dialog and opens the windowless trade interface.
+        /// Opens the keyboard navigation interface while keeping the dialog visible.
         /// </summary>
+        [HarmonyPatch("PostOpen")]
         [HarmonyPostfix]
-        public static void Postfix(Dialog_Trade __instance)
+        public static void PostOpen_Postfix(Dialog_Trade __instance)
         {
-            // Only intercept once per dialog opening
-            if (hasIntercepted)
-                return;
-
-            hasIntercepted = true;
-
             try
             {
                 // Verify TradeSession is active
@@ -83,47 +83,27 @@ namespace RimWorldAccess
                     return;
                 }
 
-                // Close the visual dialog immediately
-                __instance.Close(doCloseSound: false);
-
-                // Open the windowless trade interface
-                TradeNavigationState.Open();
+                // Open the keyboard navigation interface, passing the dialog reference
+                TradeNavigationState.Open(__instance);
             }
             catch (System.Exception ex)
             {
-                Log.Error($"RimWorld Access: Error intercepting trade dialog: {ex.Message}\n{ex.StackTrace}");
-                hasIntercepted = false;
+                Log.Error($"RimWorld Access: Error initializing trade navigation: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
         /// <summary>
-        /// Gets whether we've intercepted the current dialog.
+        /// Prefix patch for Dialog_Trade.Close to clean up our state.
         /// </summary>
-        public static bool HasIntercepted => hasIntercepted;
-
-        /// <summary>
-        /// Resets the interception flag (called from PostClose patch).
-        /// </summary>
-        public static void ResetInterception()
-        {
-            hasIntercepted = false;
-        }
-    }
-
-    /// <summary>
-    /// Patches Dialog_Trade.Close to reset interception flag.
-    /// </summary>
-    [HarmonyPatch(typeof(Dialog_Trade), "Close")]
-    public static class TradeNavigationPatch_Close
-    {
-        /// <summary>
-        /// Reset the interception flag when a dialog closes.
-        /// This ensures we can intercept the next trade dialog.
-        /// </summary>
+        [HarmonyPatch("Close")]
         [HarmonyPrefix]
-        public static void Prefix()
+        public static void Close_Prefix(Dialog_Trade __instance)
         {
-            TradeNavigationPatch_PostOpen.ResetInterception();
+            // Clean up our navigation state when the dialog closes
+            if (TradeNavigationState.IsActive)
+            {
+                TradeNavigationState.OnDialogClosing();
+            }
         }
     }
 }

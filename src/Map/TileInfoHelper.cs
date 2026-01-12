@@ -45,6 +45,7 @@ namespace RimWorldAccess
             // Categorize things (filtering out motes and visual effects)
             var pawns = new List<Pawn>();
             var buildings = new List<Building>();
+            var blueprintsAndFrames = new List<Thing>(); // Blueprints and frames for building info
             var items = new List<Thing>();
             var plants = new List<Plant>();
 
@@ -58,6 +59,8 @@ namespace RimWorldAccess
                     pawns.Add(pawn);
                 else if (thing is Building building)
                     buildings.Add(building);
+                else if (thing is Blueprint || thing is Frame)
+                    blueprintsAndFrames.Add(thing);
                 else if (thing is Plant plant)
                     plants.Add(plant);
                 else
@@ -92,7 +95,7 @@ namespace RimWorldAccess
                 addedSomething = true;
             }
 
-            // Add buildings with temperature info
+            // Add buildings with cell-specific info, temperature info and transport pod info
             foreach (var building in buildings.Take(2))
             {
                 if (addedSomething) sb.Append(", ");
@@ -105,6 +108,13 @@ namespace RimWorldAccess
                 }
                 sb.Append(buildingLabel);
 
+                // Add cell-specific suffix (e.g., "(head)" for bed, "(fuel port east)" for launcher)
+                string cellInfo = BuildingCellHelper.GetCellPrefix(building, position);
+                if (!string.IsNullOrEmpty(cellInfo))
+                {
+                    sb.Append($" ({cellInfo})");
+                }
+
                 // Add temperature control information if building is a cooler/heater
                 string tempControlInfo = GetTemperatureControlInfo(building);
                 if (!string.IsNullOrEmpty(tempControlInfo))
@@ -113,12 +123,43 @@ namespace RimWorldAccess
                     sb.Append(tempControlInfo);
                 }
 
+                // Add transport pod connection info
+                string transportPodInfo = GetTransportPodInfo(building, map);
+                if (!string.IsNullOrEmpty(transportPodInfo))
+                {
+                    sb.Append(", ");
+                    sb.Append(transportPodInfo);
+                }
+
                 addedSomething = true;
             }
             if (buildings.Count > 2)
             {
                 if (addedSomething) sb.Append(", ");
                 sb.Append($"and {buildings.Count - 2} more buildings");
+                addedSomething = true;
+            }
+
+            // Add blueprints and frames with cell-specific info (e.g., "(head)" for bed blueprints)
+            foreach (var thing in blueprintsAndFrames.Take(2))
+            {
+                if (addedSomething) sb.Append(", ");
+
+                sb.Append(thing.LabelShort);
+
+                // Add cell-specific suffix (e.g., "(head)" for bed blueprint, "(fuel port east)" for launcher)
+                string cellInfo = BuildingCellHelper.GetCellPrefix(thing, position);
+                if (!string.IsNullOrEmpty(cellInfo))
+                {
+                    sb.Append($" ({cellInfo})");
+                }
+
+                addedSomething = true;
+            }
+            if (blueprintsAndFrames.Count > 2)
+            {
+                if (addedSomething) sb.Append(", ");
+                sb.Append($"and {blueprintsAndFrames.Count - 2} more blueprints");
                 addedSomething = true;
             }
 
@@ -165,6 +206,19 @@ namespace RimWorldAccess
                 addedSomething = true;
             }
 
+            // Check if this is an empty fueling port cell (where pod should be placed)
+            // Only check if no buildings are on this tile
+            if (buildings.Count == 0)
+            {
+                string fuelingPortInfo = GetEmptyFuelingPortInfo(position, map);
+                if (!string.IsNullOrEmpty(fuelingPortInfo))
+                {
+                    if (addedSomething) sb.Append(", ");
+                    sb.Append(fuelingPortInfo);
+                    addedSomething = true;
+                }
+            }
+
             // Add zone information if present
             Zone zone = position.GetZone(map);
             if (zone != null)
@@ -192,6 +246,15 @@ namespace RimWorldAccess
                 sb.Append($", {position.x}, {position.z}");
             else
                 sb.Append($"{position.x}, {position.z}");
+
+            // Add landing validity when in drop pod landing targeting mode
+            if (IsDropPodLandingTargeting())
+            {
+                if (!DropCellFinder.IsGoodDropSpot(position, map, allowFogged: false, canRoofPunch: true))
+                {
+                    sb.Append(", can't land");
+                }
+            }
 
             // Add visibility status after coordinates when drafted pawn cannot see this position
             if (notVisible)
@@ -744,14 +807,11 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Converts an IntVec3 direction to a cardinal direction string.
+        /// Delegates to BuildingCellHelper for shared implementation.
         /// </summary>
         private static string GetCardinalDirection(IntVec3 direction)
         {
-            if (direction == IntVec3.North) return "north";
-            if (direction == IntVec3.South) return "south";
-            if (direction == IntVec3.East) return "east";
-            if (direction == IntVec3.West) return "west";
-            return "unknown";
+            return BuildingCellHelper.GetCardinalDirection(direction) ?? "unknown";
         }
 
         /// <summary>
@@ -953,6 +1013,160 @@ namespace RimWorldAccess
                 case "Power": return 7;
                 default: return 8;
             }
+        }
+
+        /// <summary>
+        /// Gets transport pod related information for a building.
+        /// For pod launchers: announces fuel port location
+        /// For transport pods: announces if connected to fuel
+        /// </summary>
+        private static string GetTransportPodInfo(Building building, Map map)
+        {
+            if (building == null || map == null)
+                return null;
+
+            // Check if this is a transport pod (has CompTransporter)
+            CompTransporter transporter = building.TryGetComp<CompTransporter>();
+            if (transporter != null)
+            {
+                // Check if it's connected to a fueling port
+                CompLaunchable launchable = building.TryGetComp<CompLaunchable>();
+                if (launchable != null)
+                {
+                    // Use reflection to check ConnectedToFuelingPort if available
+                    var connectedProp = HarmonyLib.AccessTools.Property(launchable.GetType(), "ConnectedToFuelingPort");
+                    if (connectedProp != null)
+                    {
+                        try
+                        {
+                            bool connected = (bool)connectedProp.GetValue(launchable);
+                            if (connected)
+                            {
+                                // Get fuel level if connected
+                                float fuel = TransportPodHelper.GetFuelLevel(launchable);
+                                return $"fueled ({fuel:F0} chemfuel)";
+                            }
+                            else
+                            {
+                                return "not connected to fuel";
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // Fallback: check if there's an adjacent fueling port
+                bool hasAdjacentFuel = false;
+                foreach (IntVec3 adjacent in GenAdj.CellsAdjacent8Way(building))
+                {
+                    if (adjacent.InBounds(map))
+                    {
+                        Building adjacentBuilding = adjacent.GetFirstBuilding(map);
+                        if (adjacentBuilding != null)
+                        {
+                            // Check if it's a pod launcher/fueling port
+                            CompRefuelable refuelable = adjacentBuilding.TryGetComp<CompRefuelable>();
+                            if (refuelable != null && adjacentBuilding.def.defName.Contains("Launcher"))
+                            {
+                                hasAdjacentFuel = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                return hasAdjacentFuel ? "adjacent to launcher" : "not connected to fuel";
+            }
+
+            // Check if this is a pod launcher (has CompRefuelable and is a launcher type)
+            CompRefuelable refuelableComp = building.TryGetComp<CompRefuelable>();
+            if (refuelableComp != null && building.def.defName.Contains("Launcher"))
+            {
+                // Find the fueling port cell and announce its exact coordinates
+                IntVec3 fuelingPortCell = FuelingPortUtility.GetFuelingPortCell(building);
+                if (fuelingPortCell.IsValid && fuelingPortCell.InBounds(map))
+                {
+                    float fuel = refuelableComp.Fuel;
+                    return $"{fuel:F0} chemfuel, fuel port at {fuelingPortCell.x}, {fuelingPortCell.z}";
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Gets a relative direction description from one position to another.
+        /// </summary>
+        private static string GetRelativeDirection(IntVec3 from, IntVec3 to)
+        {
+            int dx = to.x - from.x;
+            int dz = to.z - from.z;
+
+            // Determine primary direction
+            if (System.Math.Abs(dx) > System.Math.Abs(dz))
+            {
+                return dx > 0 ? "east" : "west";
+            }
+            else if (System.Math.Abs(dz) > System.Math.Abs(dx))
+            {
+                return dz > 0 ? "north" : "south";
+            }
+            else if (dx != 0 && dz != 0)
+            {
+                // Diagonal
+                string ns = dz > 0 ? "north" : "south";
+                string ew = dx > 0 ? "east" : "west";
+                return $"{ns}{ew}";
+            }
+
+            return "adjacent";
+        }
+
+        /// <summary>
+        /// Checks if a position is a fueling port cell for a nearby launcher (empty cell where pods should be placed).
+        /// Returns announcement text if this is a fueling port cell, null otherwise.
+        /// </summary>
+        private static string GetEmptyFuelingPortInfo(IntVec3 position, Map map)
+        {
+            if (map == null || !position.InBounds(map))
+                return null;
+
+            // Use FuelingPortUtility to check if this cell is a fueling port for some launcher
+            Building fuelingPortGiver = FuelingPortUtility.FuelingPortGiverAtFuelingPortCell(position, map);
+            if (fuelingPortGiver != null)
+            {
+                // This is a fueling port cell - announce it
+                string launcherName = fuelingPortGiver.LabelShort ?? "pod launcher";
+
+                // Check current fuel level
+                CompRefuelable refuelable = fuelingPortGiver.TryGetComp<CompRefuelable>();
+                if (refuelable != null)
+                {
+                    return $"fueling port for {launcherName} ({refuelable.Fuel:F0} chemfuel)";
+                }
+
+                return $"fueling port for {launcherName}";
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks if the game is currently in drop pod landing targeting mode.
+        /// Detects this by checking for the specific mouse attachment texture used for drop pods.
+        /// </summary>
+        private static bool IsDropPodLandingTargeting()
+        {
+            if (Find.Targeter == null || !Find.Targeter.IsTargeting)
+                return false;
+
+            // Use reflection to check the mouseAttachment field
+            var mouseAttachmentField = HarmonyLib.AccessTools.Field(typeof(Targeter), "mouseAttachment");
+            if (mouseAttachmentField == null)
+                return false;
+
+            var mouseAttachment = mouseAttachmentField.GetValue(Find.Targeter) as UnityEngine.Texture2D;
+            return mouseAttachment == CompLaunchable.TargeterMouseAttachment;
         }
     }
 }

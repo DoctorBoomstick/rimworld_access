@@ -313,6 +313,7 @@ namespace RimWorldAccess
             var recreationSubcat = new ScannerSubcategory("Buildings-Recreation");
             var shipSubcat = new ScannerSubcategory("Buildings-Ship");
             var temperatureSubcat = new ScannerSubcategory("Buildings-Temperature");
+            var travelingSubcat = new ScannerSubcategory("Buildings-Traveling");
             buildingsCategory.Subcategories.Add(structureSubcat);
             buildingsCategory.Subcategories.Add(productionSubcat);
             buildingsCategory.Subcategories.Add(furnitureSubcat);
@@ -322,6 +323,7 @@ namespace RimWorldAccess
             buildingsCategory.Subcategories.Add(recreationSubcat);
             buildingsCategory.Subcategories.Add(shipSubcat);
             buildingsCategory.Subcategories.Add(temperatureSubcat);
+            buildingsCategory.Subcategories.Add(travelingSubcat);
 
             // Trees category
             var treesCategory = new ScannerCategory("Trees");
@@ -522,49 +524,57 @@ namespace RimWorldAccess
                     if (building.def.building != null && building.def.building.isNaturalRock)
                         continue;
 
-                    // Categorize buildings by designation category
-                    var designationCategory = building.def.designationCategory;
-                    if (designationCategory != null)
+                    // Check for travel-related buildings first (before designation category)
+                    if (IsTravelingBuilding(building))
                     {
-                        switch (designationCategory.defName)
-                        {
-                            case "Structure":
-                                structureSubcat.Items.Add(item);
-                                break;
-                            case "Production":
-                                productionSubcat.Items.Add(item);
-                                break;
-                            case "Furniture":
-                                furnitureSubcat.Items.Add(item);
-                                break;
-                            case "Power":
-                                powerSubcat.Items.Add(item);
-                                break;
-                            case "Security":
-                                securitySubcat.Items.Add(item);
-                                break;
-                            case "Misc":
-                                miscBuildingsSubcat.Items.Add(item);
-                                break;
-                            case "Joy":
-                                recreationSubcat.Items.Add(item);
-                                break;
-                            case "Ship":
-                                shipSubcat.Items.Add(item);
-                                break;
-                            case "Temperature":
-                                temperatureSubcat.Items.Add(item);
-                                break;
-                            default:
-                                // If no specific category, put in structure
-                                structureSubcat.Items.Add(item);
-                                break;
-                        }
+                        travelingSubcat.Items.Add(item);
                     }
                     else
                     {
-                        // No designation category - default to structure
-                        structureSubcat.Items.Add(item);
+                        // Categorize buildings by designation category
+                        var designationCategory = building.def.designationCategory;
+                        if (designationCategory != null)
+                        {
+                            switch (designationCategory.defName)
+                            {
+                                case "Structure":
+                                    structureSubcat.Items.Add(item);
+                                    break;
+                                case "Production":
+                                    productionSubcat.Items.Add(item);
+                                    break;
+                                case "Furniture":
+                                    furnitureSubcat.Items.Add(item);
+                                    break;
+                                case "Power":
+                                    powerSubcat.Items.Add(item);
+                                    break;
+                                case "Security":
+                                    securitySubcat.Items.Add(item);
+                                    break;
+                                case "Misc":
+                                    miscBuildingsSubcat.Items.Add(item);
+                                    break;
+                                case "Joy":
+                                    recreationSubcat.Items.Add(item);
+                                    break;
+                                case "Ship":
+                                    shipSubcat.Items.Add(item);
+                                    break;
+                                case "Temperature":
+                                    temperatureSubcat.Items.Add(item);
+                                    break;
+                                default:
+                                    // If no specific category, put in structure
+                                    structureSubcat.Items.Add(item);
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            // No designation category - default to structure
+                            structureSubcat.Items.Add(item);
+                        }
                     }
                 }
                 else if (IsStoneChunk(thing))
@@ -809,6 +819,59 @@ namespace RimWorldAccess
                 .FirstOrDefault();
 
             return storageBuilding != null;
+        }
+
+        /// <summary>
+        /// Checks if a building is travel-related (transport pods, launchers, hitching spots, shuttles).
+        /// Fueling ports are only included if they don't have a pod connected (to avoid redundancy).
+        /// </summary>
+        private static bool IsTravelingBuilding(Building building)
+        {
+            if (building == null)
+                return false;
+
+            string defName = building.def.defName;
+
+            // Transport pods and launchers
+            if (defName.Contains("TransportPod") || defName.Contains("DropPod"))
+                return true;
+
+            // Pod launcher / fueling port - only if no pod is connected
+            if (building.def.building != null && building.def.building.hasFuelingPort)
+            {
+                // Check if this fueling port has a connected transport pod
+                // If it does, skip it (the pod will be listed instead)
+                IntVec3 fuelingCell = FuelingPortUtility.GetFuelingPortCell(building);
+                if (fuelingCell.IsValid && building.Map != null)
+                {
+                    // Check if there's a launchable (transport pod) at the fueling cell
+                    CompLaunchable launchable = FuelingPortUtility.LaunchableAt(fuelingCell, building.Map);
+                    if (launchable != null)
+                    {
+                        // Pod is connected - don't list the fueling port separately
+                        return false;
+                    }
+                }
+                // No pod connected - list the empty fueling port
+                return true;
+            }
+
+            // Caravan hitching/packing spot
+            if (defName.Contains("CaravanPackingSpot") || defName.Contains("HitchingSpot"))
+                return true;
+
+            // Shuttles (Royalty DLC)
+            if (defName.Contains("Shuttle"))
+                return true;
+
+            // Check for CompTransporter or CompLaunchable components (catches modded variants)
+            if (building is ThingWithComps twc2)
+            {
+                if (twc2.GetComp<CompTransporter>() != null || twc2.GetComp<CompLaunchable>() != null)
+                    return true;
+            }
+
+            return false;
         }
 
         private static bool IsUninstalledFurniture(Thing thing)

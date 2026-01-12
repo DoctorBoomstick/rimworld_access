@@ -215,6 +215,110 @@ Core/rimworld_access.cs (entry point)
 - **Module CLAUDE.md:** Keep up to date with architectural changes
 - **Conventional commits:** Use `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 
+## Keyboard Input Isolation (CRITICAL)
+
+### The Problem
+
+When multiple UI states are stacked (e.g., CaravanFormation → QuantityMenu → Inspection), pressing Escape should only close the topmost state. RimWorld's Window system has its own Cancel key handling via `Window.OnCancelKeyPressed()` that runs independently of our keyboard handler.
+
+**Common symptoms of this bug:**
+- Pressing Escape closes TWO dialogs instead of one
+- Camera pan sound plays unexpectedly (RimWorld's default close sound)
+- User returns to an unexpected screen after pressing Escape
+
+### What Doesn't Work
+
+These approaches do NOT reliably block RimWorld's Escape handling:
+- `Event.current.Use()` - RimWorld's KeyBindingDef doesn't check if event was "used"
+- `Event.current.keyCode = KeyCode.None` - Window system may check before we can clear it
+- Frame tracking with `ClosedOnFrame` - Same timing issues
+
+### The Solution: Harmony Patch on Window.OnCancelKeyPressed
+
+**IMPORTANT:** `Event.current.Use()` and even `Event.current.keyCode = KeyCode.None` are NOT sufficient to block RimWorld's Escape handling!
+
+RimWorld's `Window.OnCancelKeyPressed` is called by the WindowStack independently of our keyboard handler. The only reliable way to block it is to patch the method directly:
+
+```csharp
+// In CaravanFormationPatch.cs
+[HarmonyPatch(typeof(Window), "OnCancelKeyPressed")]
+[HarmonyPrefix]
+public static bool Window_OnCancelKeyPressed_Prefix(Window __instance)
+{
+    // Only intercept for specific dialogs
+    if (__instance is Dialog_FormCaravan || __instance is Dialog_SplitCaravan)
+    {
+        // Block the game's Cancel handling when our overlay menus are active
+        if (QuantityMenuState.IsActive || WindowlessInspectionState.IsActive)
+        {
+            return false; // Skip original method - let our overlay handle the Escape
+        }
+    }
+    return true; // Let original method run
+}
+```
+
+### Current Implementation
+
+The `Window.OnCancelKeyPressed` patch is in `CaravanFormationPatch.cs` and handles both:
+- `Dialog_FormCaravan` - Caravan formation from colony
+- `Dialog_SplitCaravan` - Splitting an existing caravan
+
+When `QuantityMenuState.IsActive` or `WindowlessInspectionState.IsActive`, the patch returns `false` to prevent RimWorld from closing the underlying dialog.
+
+### When to Extend This Pattern
+
+If you add a new overlay menu that can appear over RimWorld dialogs with `closeOnCancel = true`:
+1. Add your state's `IsActive` check to the existing `Window_OnCancelKeyPressed_Prefix`
+2. Or create a similar patch for the specific dialog class if it overrides `OnCancelKeyPressed`
+
+### Priority System Review
+
+UnifiedKeyboardPatch processes input by priority (lower = higher priority):
+
+| Priority | State | Escape Behavior |
+|----------|-------|-----------------|
+| 0.22 | WindowlessInspectionState (from caravan) | Close inspection only |
+| 0.25 | QuantityMenuState | Close quantity menu only |
+| 0.3 | CaravanFormationState | Close caravan dialog |
+| 0.35 | SplitCaravanState | Close split dialog |
+| ... | ... | ... |
+| 8 | Global Escape | Open pause menu |
+
+The frame checks are placed BEFORE priority 0.3 to catch Escape events that already closed higher-priority states.
+
+### Debugging Checklist
+
+If Escape closes the wrong dialog:
+1. Check if the closing state has `ClosedOnFrame` implemented
+2. Check if UnifiedKeyboardPatch has the frame check before the affected handler
+3. Verify the priority order - higher priority states should be checked first
+4. Check for `doCloseSound: true` in `WindowStack.TryRemove()` calls (should usually be `false` to let our TolkHelper announce instead)
+
+### Additional Patterns
+
+**Blocking game's default Escape handling:**
+Some RimWorld dialogs have their own Escape handling (e.g., `OnAcceptKeyPressed`). Use Harmony Prefix patches to block:
+
+```csharp
+[HarmonyPatch("OnAcceptKeyPressed")]
+[HarmonyPrefix]
+public static bool OnAcceptKeyPressed_Prefix()
+{
+    if (MyState.IsActive)
+        return false;  // Block game's handling
+    return true;
+}
+```
+
+**Silent dialog closing:**
+Always use `doCloseSound: false` when closing dialogs programmatically:
+
+```csharp
+Find.WindowStack.TryRemove(dialog, doCloseSound: false);
+TolkHelper.Speak("Dialog closed");  // Our announcement instead
+```
+
 ## Workflow Notes
 
 - **Main branch:** `master`
