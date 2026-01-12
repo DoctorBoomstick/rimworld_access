@@ -494,14 +494,16 @@ namespace RimWorldAccess
 
             // ===== PRIORITY 0.7: R key to toggle route planner in world view =====
             // Note: Must check ProgramState first for safety
-            // Note: Skip if gizmo menu is active - let typeahead handle the key
+            // Note: Skip if any menu with typeahead is active - let typeahead handle the key
             if (Current.ProgramState == ProgramState.Playing &&
                 WorldNavigationState.IsActive &&
                 !CaravanFormationState.IsActive &&
                 !CaravanInspectState.IsActive &&
                 !WindowlessDialogState.IsActive &&
                 !RoutePlannerState.IsActive &&
-                !GizmoNavigationState.IsActive)
+                !GizmoNavigationState.IsActive &&
+                !TradeNavigationState.IsActive &&
+                !SellableItemsState.IsActive)
             {
                 if (key == KeyCode.R && !Event.current.shift && !Event.current.control && !Event.current.alt)
                 {
