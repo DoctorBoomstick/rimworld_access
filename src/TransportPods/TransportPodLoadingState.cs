@@ -302,13 +302,26 @@ namespace RimWorldAccess
                 }
             }
 
-            // Handle inline quantity adjustment (Items tab only)
-            if (!showingSummary && currentTab == Tab.Items)
+            // Handle inline quantity adjustment (Items tab and grouped Pawns)
+            if (!showingSummary)
             {
-                if (TransferableQuantityHelper.HandleQuantityInput(key, shift, ctrl, alt,
-                    GetCurrentTransferableForQuantity, NotifyTransferablesChanged))
+                // Check if quantity shortcuts should be enabled for this tab/item
+                bool allowQuantityShortcuts = currentTab == Tab.Items;
+
+                // For Pawns tab, allow quantity shortcuts only for grouped animals (MaxCount > 1)
+                if (!allowQuantityShortcuts)
                 {
-                    return true;
+                    var transferable = GetCurrentTransferableForQuantity();
+                    allowQuantityShortcuts = transferable != null && transferable.MaxCount > 1;
+                }
+
+                if (allowQuantityShortcuts)
+                {
+                    if (TransferableQuantityHelper.HandleQuantityInput(key, shift, ctrl, alt,
+                        GetCurrentTransferableForQuantity, NotifyTransferablesChanged))
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -502,7 +515,7 @@ namespace RimWorldAccess
         #region Item Actions
 
         /// <summary>
-        /// Activates the selected item (toggle for pawns, quantity menu for items).
+        /// Activates the selected item (toggle for single pawns, quantity menu for grouped pawns and items).
         /// </summary>
         private static void ActivateSelected()
         {
@@ -518,8 +531,16 @@ namespace RimWorldAccess
 
             if (currentTab == Tab.Pawns)
             {
-                // Toggle pawn selection
-                TogglePawnSelection(transferable);
+                // For grouped pawns (multiple animals), use quantity menu
+                if (transferable.MaxCount > 1)
+                {
+                    OpenQuantityMenu(transferable);
+                }
+                else
+                {
+                    // Single pawn - toggle selection
+                    TogglePawnSelection(transferable);
+                }
             }
             else
             {
@@ -931,6 +952,7 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Gets a label for a transferable item.
+        /// For grouped animals (multiple pawns in one transferable), returns label with gender/life stage.
         /// </summary>
         private static string GetTransferableLabel(TransferableOneWay transferable)
         {
@@ -939,6 +961,11 @@ namespace RimWorldAccess
 
             if (transferable.AnyThing is Pawn pawn)
             {
+                // Check if multiple pawns are grouped together (animals with numerical names)
+                if (transferable.MaxCount > 1)
+                {
+                    return PawnLabelHelper.BuildGroupedPawnLabel(pawn, transferable.MaxCount);
+                }
                 return pawn.LabelShortCap.StripTags();
             }
             return transferable.LabelCap.StripTags();

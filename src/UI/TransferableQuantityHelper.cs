@@ -13,6 +13,25 @@ namespace RimWorldAccess
     public static class TransferableQuantityHelper
     {
         /// <summary>
+        /// Gets the appropriate label for a transferable.
+        /// For grouped pawns (animals with MaxCount > 1), uses PawnLabelHelper.
+        /// For other items, uses the standard LabelCap.
+        /// </summary>
+        private static string GetTransferableLabel(TransferableOneWay transferable)
+        {
+            if (transferable == null)
+                return "";
+
+            // Check if this is a grouped pawn (multiple animals in one transferable)
+            if (transferable.AnyThing is Pawn pawn && transferable.MaxCount > 1)
+            {
+                return PawnLabelHelper.BuildGroupedPawnLabel(pawn, transferable.MaxCount);
+            }
+
+            return transferable.LabelCap.StripTags();
+        }
+
+        /// <summary>
         /// Handles keyboard input for quantity adjustment.
         /// Returns true if the input was handled.
         /// </summary>
@@ -113,7 +132,7 @@ namespace RimWorldAccess
             onChanged?.Invoke();
 
             // Announce the new quantity
-            string itemName = transferable.LabelCap.StripTags();
+            string itemName = GetTransferableLabel(transferable);
             TolkHelper.Speak($"{newQty} {itemName}");
         }
 
@@ -137,7 +156,7 @@ namespace RimWorldAccess
             transferable.AdjustTo(maxQty);
             onChanged?.Invoke();
 
-            string itemName = transferable.LabelCap.StripTags();
+            string itemName = GetTransferableLabel(transferable);
             float itemMass = transferable.AnyThing?.GetStatValue(RimWorld.StatDefOf.Mass)
                 ?? transferable.ThingDef?.BaseMass ?? 0f;
             float totalMass = maxQty * itemMass;
@@ -163,7 +182,7 @@ namespace RimWorldAccess
             transferable.AdjustTo(0);
             onChanged?.Invoke();
 
-            string itemName = transferable.LabelCap.StripTags();
+            string itemName = GetTransferableLabel(transferable);
             TolkHelper.Speak($"0 {itemName}");
         }
     }

@@ -2003,10 +2003,24 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Gets a clean label for a tradeable, stripped of rich text tags.
+        /// For grouped pawns (animals with numerical names), returns label with gender/life stage.
         /// </summary>
         private static string GetCleanLabel(Tradeable tradeable)
         {
-            return StripRichText(tradeable?.Label ?? "");
+            if (tradeable == null)
+                return "";
+
+            // Check if this is a grouped pawn (multiple animals in one tradeable)
+            if (tradeable.AnyThing is Pawn pawn)
+            {
+                int totalCount = tradeable.CountHeldBy(Transactor.Colony) + tradeable.CountHeldBy(Transactor.Trader);
+                if (totalCount > 1)
+                {
+                    return PawnLabelHelper.BuildGroupedPawnLabel(pawn, totalCount);
+                }
+            }
+
+            return StripRichText(tradeable.Label ?? "");
         }
 
         /// <summary>

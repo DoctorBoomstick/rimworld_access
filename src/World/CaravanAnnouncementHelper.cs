@@ -31,23 +31,46 @@ namespace RimWorldAccess
 
             if (transferable.AnyThing is Pawn pawn)
             {
-                announcement.Append(pawn.LabelShortCap.StripTags());
+                int maxCount = transferable.MaxCount;
+                int toTransfer = transferable.CountToTransfer;
 
-                if (pawn.story != null && !pawn.story.TitleCap.NullOrEmpty())
+                // Check if multiple pawns are grouped together (animals with numerical names)
+                if (maxCount > 1)
                 {
-                    announcement.Append($", {pawn.story.TitleCap.StripTags()}");
+                    // Build label with distinguishing info (gender, life stage)
+                    string label = PawnLabelHelper.BuildGroupedPawnLabel(pawn, maxCount);
+                    announcement.Append(label);
+
+                    if (toTransfer > 0)
+                    {
+                        announcement.Append($". Taking {toTransfer} of {maxCount}");
+                    }
+                    else
+                    {
+                        announcement.Append($". {maxCount} available");
+                    }
                 }
-
-                // Add equipped weapon if any
-                if (pawn.equipment?.Primary != null)
+                else
                 {
-                    announcement.Append($" (wielding {pawn.equipment.Primary.LabelCap})");
-                }
+                    // Single pawn - show individual details
+                    announcement.Append(pawn.LabelShortCap.StripTags());
 
-                // Only say "checked" if they're going, nothing if staying
-                if (transferable.CountToTransfer > 0)
-                {
-                    announcement.Append(" - checked");
+                    if (pawn.story != null && !pawn.story.TitleCap.NullOrEmpty())
+                    {
+                        announcement.Append($", {pawn.story.TitleCap.StripTags()}");
+                    }
+
+                    // Add equipped weapon if any
+                    if (pawn.equipment?.Primary != null)
+                    {
+                        announcement.Append($" (wielding {pawn.equipment.Primary.LabelCap})");
+                    }
+
+                    // Only say "checked" if they're going, nothing if staying
+                    if (toTransfer > 0)
+                    {
+                        announcement.Append(" - checked");
+                    }
                 }
             }
             else
@@ -104,11 +127,32 @@ namespace RimWorldAccess
 
             if (transferable.AnyThing is Pawn pawn)
             {
-                announcement.Append(pawn.LabelShortCap.StripTags());
-                // Only say "checked" if they're going
-                if (transferable.CountToTransfer > 0)
+                int maxCount = transferable.MaxCount;
+                int toTransfer = transferable.CountToTransfer;
+
+                // Check if multiple pawns are grouped together (animals with numerical names)
+                if (maxCount > 1)
                 {
-                    announcement.Append(" - checked");
+                    string label = PawnLabelHelper.BuildGroupedPawnLabel(pawn, maxCount);
+                    announcement.Append(label);
+
+                    if (toTransfer > 0)
+                    {
+                        announcement.Append($". Taking {toTransfer} of {maxCount}");
+                    }
+                    else
+                    {
+                        announcement.Append($". {maxCount} available");
+                    }
+                }
+                else
+                {
+                    announcement.Append(pawn.LabelShortCap.StripTags());
+                    // Only say "checked" if they're going
+                    if (toTransfer > 0)
+                    {
+                        announcement.Append(" - checked");
+                    }
                 }
             }
             else

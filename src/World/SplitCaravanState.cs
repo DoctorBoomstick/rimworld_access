@@ -739,6 +739,7 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Toggles selection for a pawn (Space key in Pawns tab).
+        /// For grouped pawns (multiple animals), opens quantity menu instead.
         /// </summary>
         private static void TogglePawnSelection()
         {
@@ -749,7 +750,17 @@ namespace RimWorldAccess
             if (transferables.Count == 0 || selectedIndex < 0 || selectedIndex >= transferables.Count)
                 return;
 
-            CaravanUIHelper.TogglePawnSelection(transferables[selectedIndex], NotifyTransferablesChanged);
+            TransferableOneWay transferable = transferables[selectedIndex];
+
+            // For grouped pawns (multiple animals), use quantity menu
+            if (transferable.MaxCount > 1)
+            {
+                OpenQuantityMenu(transferable);
+                return;
+            }
+
+            // For single pawns, use toggle
+            CaravanUIHelper.TogglePawnSelection(transferable, NotifyTransferablesChanged);
         }
 
         /// <summary>
@@ -992,14 +1003,27 @@ namespace RimWorldAccess
                 return true;
             }
 
-            // Handle inline quantity adjustment (Items and FoodAndMedicine tabs only)
-            if (!showingSummary && currentTab != Tab.Pawns)
+            // Handle inline quantity adjustment (Items, FoodAndMedicine, and grouped Pawns)
+            if (!showingSummary)
             {
-                if (TransferableQuantityHelper.HandleQuantityInput(key, shift, ctrl, alt,
-                    GetCurrentTransferableForQuantity, NotifyTransferablesChanged))
+                // Check if quantity shortcuts should be enabled for this tab/item
+                bool allowQuantityShortcuts = currentTab != Tab.Pawns;
+
+                // For Pawns tab, allow quantity shortcuts only for grouped animals (MaxCount > 1)
+                if (!allowQuantityShortcuts)
                 {
-                    Event.current.Use();
-                    return true;
+                    var transferable = GetCurrentTransferableForQuantity();
+                    allowQuantityShortcuts = transferable != null && transferable.MaxCount > 1;
+                }
+
+                if (allowQuantityShortcuts)
+                {
+                    if (TransferableQuantityHelper.HandleQuantityInput(key, shift, ctrl, alt,
+                        GetCurrentTransferableForQuantity, NotifyTransferablesChanged))
+                    {
+                        Event.current.Use();
+                        return true;
+                    }
                 }
             }
 
