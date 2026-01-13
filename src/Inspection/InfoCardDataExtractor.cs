@@ -154,10 +154,14 @@ namespace RimWorldAccess
                 tabs.Add(Dialog_InfoCard.InfoCardTab.Health);
 
                 // Permits for Royalty DLC + humanlike + player faction
+                // Must also check selectedFaction != null (RimWorld bug: crashes if null)
+                // And exclude quest lodgers (per RimWorld's own logic)
                 if (ModsConfig.RoyaltyActive &&
                     pawn.RaceProps.Humanlike &&
                     pawn.Faction == Faction.OfPlayer &&
-                    pawn.royalty != null)
+                    !pawn.IsQuestLodger() &&
+                    pawn.royalty != null &&
+                    PermitsCardUtility.selectedFaction != null)
                 {
                     tabs.Add(Dialog_InfoCard.InfoCardTab.Permits);
                 }
