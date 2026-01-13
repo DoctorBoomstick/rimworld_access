@@ -968,7 +968,8 @@ namespace RimWorldAccess
         {
             if (pawn != null)
             {
-                WindowlessInspectionState.OpenForObject(pawn, null, InspectionMode.ReadOnly);
+                Dialog_InfoCard infoCard = new Dialog_InfoCard(pawn);
+                Find.WindowStack.Add(infoCard);
             }
         }
 
@@ -976,7 +977,8 @@ namespace RimWorldAccess
         {
             if (thing != null)
             {
-                WindowlessInspectionState.OpenForObject(thing, null, InspectionMode.ReadOnly);
+                Dialog_InfoCard infoCard = new Dialog_InfoCard(thing);
+                Find.WindowStack.Add(infoCard);
             }
         }
 

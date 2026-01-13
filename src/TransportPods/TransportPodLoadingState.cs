@@ -661,9 +661,10 @@ namespace RimWorldAccess
             Thing thingToInspect = transferable.AnyThing;
             if (thingToInspect != null)
             {
-                // Use ReadOnly mode since we're just viewing, not interacting
-                // This also auto-expands single root nodes for consistency with caravan inspection
-                WindowlessInspectionState.OpenForObject(thingToInspect, null, InspectionMode.ReadOnly);
+                // Use Dialog_InfoCard instead of WindowlessInspectionState to avoid tab discovery
+                // errors for world pawns (which don't have the same tabs as map pawns)
+                Dialog_InfoCard infoCard = new Dialog_InfoCard(thingToInspect);
+                Find.WindowStack.Add(infoCard);
             }
             else
             {

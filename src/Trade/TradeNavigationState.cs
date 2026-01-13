@@ -1964,8 +1964,8 @@ namespace RimWorldAccess
         }
 
         /// <summary>
-        /// Inspects the current item using WindowlessInspectionState (called on Alt+I).
-        /// Shows detailed item stats, quality, condition, etc.
+        /// Inspects the current item using Dialog_InfoCard (called on Alt+I).
+        /// Opens the same info card that sighted players get via the "i" button.
         /// </summary>
         public static void InspectCurrentItem()
         {
@@ -1983,7 +1983,9 @@ namespace RimWorldAccess
                 return;
             }
 
-            WindowlessInspectionState.OpenForObject(thing, null, InspectionMode.ReadOnly);
+            // Open the InfoCard dialog - InfoCardPatch will handle accessibility
+            Dialog_InfoCard infoCard = new Dialog_InfoCard(thing);
+            Find.WindowStack.Add(infoCard);
         }
 
         /// <summary>

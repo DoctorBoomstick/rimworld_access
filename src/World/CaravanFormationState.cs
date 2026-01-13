@@ -1570,7 +1570,8 @@ namespace RimWorldAccess
                                 Thing thing = transferables[selectedIndex].AnyThing;
                                 if (thing != null)
                                 {
-                                    WindowlessInspectionState.OpenForObject(thing, null, InspectionMode.ReadOnly);
+                                    Dialog_InfoCard infoCard = new Dialog_InfoCard(thing);
+                                    Find.WindowStack.Add(infoCard);
                                 }
                             }
                         }
