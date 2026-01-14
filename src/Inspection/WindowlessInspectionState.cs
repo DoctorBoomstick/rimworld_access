@@ -158,6 +158,84 @@ namespace RimWorldAccess
         }
 
         /// <summary>
+        /// Opens the inspection menu for a specific object with specified mode.
+        /// </summary>
+        /// <param name="obj">The object to inspect</param>
+        /// <param name="parent">Optional parent object to return to when pressing Escape</param>
+        /// <param name="mode">Inspection mode - Full allows actions, ReadOnly is view-only</param>
+        public static void OpenForObject(object obj, object parent, InspectionMode mode)
+        {
+            try
+            {
+                if (obj == null)
+                {
+                    TolkHelper.Speak("No object to inspect.");
+                    SoundDefOf.ClickReject.PlayOneShotOnCamera();
+                    return;
+                }
+
+                // Set position if it's a Thing
+                if (obj is Thing thing)
+                {
+                    inspectionPosition = thing.Position;
+                }
+                else
+                {
+                    inspectionPosition = IntVec3.Invalid;
+                }
+
+                // Store parent for navigation back
+                parentObject = parent;
+
+                // Build tree with just this object, using specified mode
+                var objects = new List<object> { obj };
+                rootItem = InspectionTreeBuilder.BuildTree(objects, mode);
+                RebuildVisibleList();
+                selectedIndex = 0;
+                lastChildPerParent.Clear();
+                MenuHelper.ResetLevel("Inspection");
+
+                IsActive = true;
+                SoundDefOf.TabOpen.PlayOneShotOnCamera();
+                typeahead.ClearSearch();
+
+                // Special handling for single object: auto-expand and position on first child
+                if (visibleItems.Count > 0)
+                {
+                    var singleItem = visibleItems[0];
+                    if (singleItem.IsExpandable)
+                    {
+                        // Announce just the item name (no expand/collapse status)
+                        TolkHelper.Speak(singleItem.Label.StripTags());
+
+                        // Trigger lazy loading if needed
+                        if (singleItem.OnActivate != null && singleItem.Children.Count == 0)
+                        {
+                            singleItem.OnActivate();
+                        }
+
+                        if (singleItem.Children.Count > 0)
+                        {
+                            singleItem.IsExpanded = true;
+                            RebuildVisibleList();
+                            selectedIndex = 1; // First child
+                            AnnounceCurrentSelection();
+                        }
+                        return; // Early return - skip normal announcement
+                    }
+                }
+
+                // Normal case: non-expandable single object
+                AnnounceCurrentSelection();
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[RimWorldAccess] Error opening inspection menu for object: {ex}");
+                Close();
+            }
+        }
+
+        /// <summary>
         /// Closes the inspection menu.
         /// </summary>
         public static void Close()
@@ -896,6 +974,34 @@ namespace RimWorldAccess
                     {
                         // Navigate normally (either no search active, OR search with no matches)
                         SelectNext();
+                    }
+                    ev.Use();
+                    return true;
+                }
+
+                // Handle Home - jump to first item
+                if (key == KeyCode.Home)
+                {
+                    if (visibleItems.Count > 0)
+                    {
+                        selectedIndex = 0;
+                        typeahead.ClearSearch();
+                        SoundDefOf.Tick_Tiny.PlayOneShotOnCamera();
+                        AnnounceCurrentSelection();
+                    }
+                    ev.Use();
+                    return true;
+                }
+
+                // Handle End - jump to last item
+                if (key == KeyCode.End)
+                {
+                    if (visibleItems.Count > 0)
+                    {
+                        selectedIndex = visibleItems.Count - 1;
+                        typeahead.ClearSearch();
+                        SoundDefOf.Tick_Tiny.PlayOneShotOnCamera();
+                        AnnounceCurrentSelection();
                     }
                     ev.Use();
                     return true;

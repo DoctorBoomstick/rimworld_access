@@ -222,12 +222,12 @@ namespace RimWorldAccess
                 Find.DesignatorManager.Select(designator);
             }
 
-            // If this is a build designator, set its rotation via reflection
-            if (designator is Designator_Build buildDesignator)
+            // If this is a place designator (build or install), set its rotation via reflection
+            if (designator is Designator_Place placeDesignator)
             {
                 if (placingRotField != null)
                 {
-                    placingRotField.SetValue(buildDesignator, currentRotation);
+                    placingRotField.SetValue(placeDesignator, currentRotation);
                 }
             }
 
@@ -239,10 +239,11 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Rotates the current building clockwise.
+        /// Works with both Designator_Build (new construction) and Designator_Install (reinstall/install).
         /// </summary>
         public static void RotateBuilding()
         {
-            if (!IsInPlacementMode || !(selectedDesignator is Designator_Build buildDesignator))
+            if (!IsInPlacementMode || !(selectedDesignator is Designator_Place placeDesignator))
                 return;
 
             // Rotate clockwise
@@ -251,26 +252,33 @@ namespace RimWorldAccess
             // Set rotation on the designator via reflection
             if (placingRotField != null)
             {
-                placingRotField.SetValue(buildDesignator, currentRotation);
+                placingRotField.SetValue(placeDesignator, currentRotation);
             }
 
             // Announce new rotation and spatial info
-            string announcement = GetRotationAnnouncement(buildDesignator);
+            string announcement = GetRotationAnnouncementForDef(placeDesignator.PlacingDef, currentRotation);
             TolkHelper.Speak(announcement);
             Log.Message($"Rotated building to: {currentRotation}");
         }
 
         /// <summary>
         /// Gets the initial placement announcement including size and rotation info.
+        /// Works with both Designator_Build (new construction) and Designator_Install (reinstall/install).
         /// </summary>
         private static string GetPlacementAnnouncement(Designator designator)
         {
-            if (!(designator is Designator_Build buildDesignator))
+            // Handle Designator_Place (parent of both Designator_Build and Designator_Install)
+            if (!(designator is Designator_Place placeDesignator))
             {
                 return $"{designator.Label} selected. Press Space to designate tiles, Enter to confirm, Escape to cancel";
             }
 
-            BuildableDef entDef = buildDesignator.PlacingDef;
+            BuildableDef entDef = placeDesignator.PlacingDef;
+            if (entDef == null)
+            {
+                return $"{designator.Label} selected. Press Space to place, R to rotate, Escape to cancel";
+            }
+
             IntVec2 size = entDef.Size;
 
             string sizeInfo = GetSizeDescription(size, currentRotation);
@@ -290,12 +298,22 @@ namespace RimWorldAccess
         /// </summary>
         private static string GetRotationAnnouncement(Designator_Build buildDesignator)
         {
-            BuildableDef entDef = buildDesignator.PlacingDef;
-            IntVec2 size = entDef.Size;
+            return GetRotationAnnouncementForDef(buildDesignator.PlacingDef, currentRotation);
+        }
 
-            string sizeInfo = GetSizeDescription(size, currentRotation);
-            string rotationName = GetRotationName(currentRotation);
-            string specialRequirements = GetSpecialSpatialRequirements(entDef, currentRotation);
+        /// <summary>
+        /// Gets rotation announcement for any BuildableDef at a given rotation.
+        /// Shared by architect menu placement and gizmo-based placement (reinstall, etc.)
+        /// </summary>
+        internal static string GetRotationAnnouncementForDef(BuildableDef def, Rot4 rotation)
+        {
+            if (def == null)
+                return $"Facing {GetRotationName(rotation)}";
+
+            IntVec2 size = def.Size;
+            string sizeInfo = GetSizeDescription(size, rotation);
+            string rotationName = GetRotationName(rotation);
+            string specialRequirements = GetSpecialSpatialRequirements(def, rotation);
 
             if (!string.IsNullOrEmpty(specialRequirements))
             {
@@ -306,32 +324,48 @@ namespace RimWorldAccess
         }
 
         /// <summary>
-        /// Gets special spatial requirements for buildings like wind turbines and coolers.
+        /// Gets special spatial requirements for buildings like wind turbines, coolers,
+        /// beds (head position), fuel ports, TVs, and interaction cell buildings.
         /// </summary>
         private static string GetSpecialSpatialRequirements(BuildableDef def, Rot4 rotation)
         {
             if (def == null || !(def is ThingDef thingDef))
                 return null;
 
-            string defName = thingDef.defName.ToLower();
-
-            // Check for wind turbine
-            if (defName.Contains("windturbine"))
+            // Check for wind turbine (highest priority - needs clear space)
+            // Uses PlaceWorker_WindTurbine check for proper game integration
+            if (IsWindTurbine(thingDef))
             {
                 return GetWindTurbineRequirements(rotation);
             }
 
-            // Check for cooler
-            if (defName.Contains("cooler"))
-            {
-                return GetCoolerRequirements(rotation);
-            }
+            // Use BuildingCellHelper for all other special position info
+            // (coolers, beds, fuel ports, TVs, vents, thrones, turrets, etc.)
+            return BuildingCellHelper.GetPlacementPositionInfo(thingDef, rotation);
+        }
 
-            return null;
+        /// <summary>
+        /// Checks if a ThingDef is a wind turbine by looking for PlaceWorker_WindTurbine.
+        /// This is the proper game API for identifying wind turbines.
+        /// </summary>
+        private static bool IsWindTurbine(ThingDef def)
+        {
+            if (def?.placeWorkers == null)
+                return false;
+
+            foreach (var workerType in def.placeWorkers)
+            {
+                if (workerType == typeof(PlaceWorker_WindTurbine))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
         /// Gets spatial requirements for wind turbines.
+        /// Verified against WindTurbineUtility.CalculateWindCells() in game code:
+        /// - North/East facing: 9 tiles front, 5 tiles back
+        /// - South/West facing: 5 tiles front, 9 tiles back
         /// </summary>
         private static string GetWindTurbineRequirements(Rot4 rotation)
         {
@@ -355,49 +389,32 @@ namespace RimWorldAccess
             }
         }
 
-        /// <summary>
-        /// Gets spatial requirements for coolers.
-        /// </summary>
-        private static string GetCoolerRequirements(Rot4 rotation)
-        {
-            // Coolers have a hot side (front) and cold side (back)
-            // Hot side is North relative to rotation, cold side is South
-            IntVec3 hotSide = IntVec3.North.RotatedBy(rotation);
-            IntVec3 coldSide = IntVec3.South.RotatedBy(rotation);
-
-            string hotDir = GetDirectionName(hotSide);
-            string coldDir = GetDirectionName(coldSide);
-
-            return $"Hot exhaust to {hotDir}, cold air to {coldDir}";
-        }
+        // NOTE: Cooler handling moved to BuildingCellHelper.GetCoolerDirectionInfo()
+        // for consistent handling in both placement and cursor inspection.
 
         /// <summary>
         /// Gets a direction name from an IntVec3 offset.
+        /// Delegates to BuildingCellHelper.GetCardinalDirection for consistency.
         /// </summary>
         private static string GetDirectionName(IntVec3 offset)
         {
-            if (offset == IntVec3.North) return "north";
-            if (offset == IntVec3.South) return "south";
-            if (offset == IntVec3.East) return "east";
-            if (offset == IntVec3.West) return "west";
-            return "unknown";
+            return BuildingCellHelper.GetCardinalDirection(offset) ?? "unknown";
         }
 
         /// <summary>
         /// Gets a human-readable description of the building size and occupied tiles.
+        /// Uses RimWorld's GenAdj.OccupiedRect to accurately calculate where the building extends.
         /// </summary>
-        private static string GetSizeDescription(IntVec2 size, Rot4 rotation)
+        internal static string GetSizeDescription(IntVec2 size, Rot4 rotation)
         {
-            // Adjust size for rotation (horizontal rotations swap x and z)
-            int width = size.x;
-            int depth = size.z;
+            // Get cursor position for calculating actual occupied rect
+            IntVec3 cursorPosition = MapNavigationState.CurrentCursorPosition;
 
-            if (rotation.IsHorizontal)
-            {
-                int temp = width;
-                width = depth;
-                depth = temp;
-            }
+            // Use RimWorld's OccupiedRect to get the actual cells (accounts for rotation adjustments)
+            CellRect occupiedRect = GenAdj.OccupiedRect(cursorPosition, rotation, size);
+
+            int width = occupiedRect.Width;
+            int depth = occupiedRect.Height;
 
             if (width == 1 && depth == 1)
             {
@@ -408,16 +425,16 @@ namespace RimWorldAccess
             List<string> parts = new List<string>();
             parts.Add($"Size: {width} by {depth}");
 
-            // Describe occupied tiles relative to cursor
+            // Calculate extends from cursor position to rect bounds
             if (width > 1 || depth > 1)
             {
                 List<string> directions = new List<string>();
 
-                // Calculate how many tiles extend in each direction from center
-                int eastTiles = (width - 1) / 2;
-                int westTiles = width - 1 - eastTiles;
-                int northTiles = (depth - 1) / 2;
-                int southTiles = depth - 1 - northTiles;
+                // Calculate how many tiles extend in each direction from cursor
+                int northTiles = occupiedRect.maxZ - cursorPosition.z;
+                int southTiles = cursorPosition.z - occupiedRect.minZ;
+                int eastTiles = occupiedRect.maxX - cursorPosition.x;
+                int westTiles = cursorPosition.x - occupiedRect.minX;
 
                 if (northTiles > 0)
                     directions.Add($"{northTiles} north");
@@ -438,7 +455,7 @@ namespace RimWorldAccess
         /// <summary>
         /// Gets a human-readable rotation name.
         /// </summary>
-        private static string GetRotationName(Rot4 rotation)
+        internal static string GetRotationName(Rot4 rotation)
         {
             if (rotation == Rot4.North) return "North";
             if (rotation == Rot4.East) return "East";
@@ -601,6 +618,13 @@ namespace RimWorldAccess
             if (Find.DesignatorManager != null)
             {
                 Find.DesignatorManager.Deselect();
+            }
+
+            // Clear selection if it's a MinifiedThing (from inventory install)
+            // This prevents stale MinifiedThing selection from affecting gizmo visibility
+            if (Find.Selector?.SingleSelectedThing is MinifiedThing)
+            {
+                Find.Selector.ClearSelection();
             }
 
             Log.Message("Architect state reset");

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 using RimWorld;
+using RimWorld.Planet;
 
 namespace RimWorldAccess
 {
@@ -57,6 +58,23 @@ namespace RimWorldAccess
             // Only process during normal gameplay with a valid map
             if (Find.CurrentMap == null || !MapNavigationState.IsInitialized)
                 return;
+
+            // If on the world map, switch to colony map first (mimics game's default Tab behavior)
+            if (Find.World?.renderer?.wantedMode == WorldRenderMode.Planet)
+            {
+                // Switch from world view to colony map
+                CameraJumper.TryHideWorld();
+
+                // Restore cursor to last known position for this map (or 0,0 if unknown)
+                MapNavigationState.RestoreCursorForCurrentMap();
+
+                // Open our architect menu
+                OpenArchitectTreeMenu();
+
+                // Consume the event so game doesn't open its inaccessible architect menu
+                Event.current.Use();
+                return;
+            }
 
             // Don't process if any dialog or window that prevents camera motion is open
             if (Find.WindowStack != null && Find.WindowStack.WindowsPreventCameraMotion)

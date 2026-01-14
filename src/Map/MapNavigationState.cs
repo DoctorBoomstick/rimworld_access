@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Verse;
 using RimWorld;
 
@@ -20,23 +22,84 @@ namespace RimWorldAccess
     /// <summary>
     /// Maintains the state of map navigation for accessibility features.
     /// Tracks the current cursor position as the user navigates the map with arrow keys.
+    /// Stores per-map cursor positions so switching between maps preserves cursor location.
     /// </summary>
     public static class MapNavigationState
     {
-        private static IntVec3 currentCursorPosition = IntVec3.Invalid;
+        // Per-map cursor positions, keyed by map.uniqueID
+        private static Dictionary<int, IntVec3> cursorPositionsByMap = new Dictionary<int, IntVec3>();
+
         private static string lastAnnouncedInfo = "";
         private static bool isInitialized = false;
+        private static int initializedForMapId = -1; // Track which map we're initialized for
         private static bool suppressMapNavigation = false;
         private static JumpMode currentJumpMode = JumpMode.Terrain;
         private static int presetJumpDistance = 5;
 
+        // Pending restore position - used when returning from dialogs like trade
+        // If set, Initialize() will use this position instead of the camera position
+        private static IntVec3 pendingRestorePosition = IntVec3.Invalid;
+
+        // Map tracking - detect when maps are added/removed
+        private static HashSet<int> knownMapIds = new HashSet<int>();
+        private static bool hasAnnouncedMultiMapHint = false;
+
         /// <summary>
-        /// Gets or sets the current cursor position on the map.
+        /// Gets or sets the current cursor position on the current map.
+        /// Automatically stores/retrieves per-map positions using map.uniqueID.
         /// </summary>
         public static IntVec3 CurrentCursorPosition
         {
-            get => currentCursorPosition;
-            set => currentCursorPosition = value;
+            get
+            {
+                if (Find.CurrentMap == null)
+                    return IntVec3.Invalid;
+
+                if (cursorPositionsByMap.TryGetValue(Find.CurrentMap.uniqueID, out IntVec3 pos))
+                    return pos;
+
+                return IntVec3.Invalid;
+            }
+            set
+            {
+                if (Find.CurrentMap != null)
+                    cursorPositionsByMap[Find.CurrentMap.uniqueID] = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets the stored cursor position for a specific map, or (0,0,0) if none stored.
+        /// </summary>
+        public static IntVec3 GetCursorPositionForMap(Map map)
+        {
+            if (map == null)
+                return IntVec3.Invalid;
+
+            if (cursorPositionsByMap.TryGetValue(map.uniqueID, out IntVec3 pos))
+                return pos;
+
+            // Default to (0,0,0) for maps with no stored position
+            return new IntVec3(0, 0, 0);
+        }
+
+        /// <summary>
+        /// Restores cursor to last known position for current map (or 0,0 if unknown).
+        /// Also moves camera to that position.
+        /// </summary>
+        public static void RestoreCursorForCurrentMap()
+        {
+            if (Find.CurrentMap == null)
+                return;
+
+            IntVec3 restorePosition = GetCursorPositionForMap(Find.CurrentMap);
+
+            // Validate position is in bounds
+            if (!restorePosition.InBounds(Find.CurrentMap))
+                restorePosition = new IntVec3(0, 0, 0);
+
+            CurrentCursorPosition = restorePosition;
+            Find.CameraDriver?.JumpToCurrentMapLoc(restorePosition);
+            isInitialized = true;
         }
 
         /// <summary>
@@ -50,17 +113,33 @@ namespace RimWorldAccess
 
         /// <summary>
         /// Indicates whether the navigation state has been initialized for the current map.
+        /// Returns false if the current map is different from the map we initialized for.
         /// </summary>
         public static bool IsInitialized
         {
-            get => isInitialized;
+            get
+            {
+                // Not initialized at all
+                if (!isInitialized)
+                    return false;
+
+                // Check if we're on the same map we initialized for
+                if (Find.CurrentMap == null)
+                    return false;
+
+                // If the current map is different, we need to re-initialize
+                if (Find.CurrentMap.uniqueID != initializedForMapId)
+                    return false;
+
+                return true;
+            }
             set => isInitialized = value;
         }
 
         /// <summary>
         /// Gets or sets whether map navigation should be suppressed (e.g., when menus are open).
         /// When true, arrow keys will not move the map cursor.
-        /// Automatically returns true if trade menu, trade confirmation, gizmo navigation, or windowless dialog is active.
+        /// Automatically returns true if trade menu, gizmo navigation, or windowless dialog is active.
         /// </summary>
         public static bool SuppressMapNavigation
         {
@@ -68,10 +147,6 @@ namespace RimWorldAccess
             {
                 // Suppress if trade menu is active
                 if (TradeNavigationState.IsActive)
-                    return true;
-
-                // Suppress if trade confirmation dialog is active
-                if (TradeConfirmationState.IsActive)
                     return true;
 
                 // Suppress if gizmo navigation is active
@@ -180,30 +255,56 @@ namespace RimWorldAccess
         }
 
         /// <summary>
-        /// Initializes the cursor position to the center of the current map view or camera position.
+        /// Sets a position to restore when the map navigation next initializes.
+        /// Used when returning from dialogs (like trade) to preserve cursor position.
+        /// </summary>
+        public static void SetPendingRestorePosition(IntVec3 position)
+        {
+            pendingRestorePosition = position;
+        }
+
+        /// <summary>
+        /// Initializes the cursor position for a map.
+        /// Priority: pending restore position > stored per-map position > camera position > (0,0,0)
         /// </summary>
         public static void Initialize(Map map)
         {
             if (map == null)
             {
-                currentCursorPosition = IntVec3.Invalid;
                 isInitialized = false;
                 return;
             }
 
-            // Start at the camera's current position
-            if (Find.CameraDriver != null)
+            IntVec3 newPosition;
+
+            // Check for pending restore position first (from returning from trade, etc.)
+            if (pendingRestorePosition.IsValid && pendingRestorePosition.InBounds(map))
             {
-                currentCursorPosition = Find.CameraDriver.MapPosition;
+                newPosition = pendingRestorePosition;
+                pendingRestorePosition = IntVec3.Invalid;
+            }
+            // Check if we have a stored position for this map
+            else if (cursorPositionsByMap.TryGetValue(map.uniqueID, out IntVec3 storedPos) && storedPos.InBounds(map))
+            {
+                newPosition = storedPos;
+            }
+            // Start at the camera's current position
+            else if (Find.CameraDriver != null)
+            {
+                newPosition = Find.CameraDriver.MapPosition;
             }
             else
             {
-                // Fallback to map center if camera driver not available
-                currentCursorPosition = map.Center;
+                // Fallback to (0,0,0) if nothing else available
+                newPosition = new IntVec3(0, 0, 0);
             }
+
+            // Store the position for this map
+            cursorPositionsByMap[map.uniqueID] = newPosition;
 
             lastAnnouncedInfo = "";
             isInitialized = true;
+            initializedForMapId = map.uniqueID;
         }
 
         /// <summary>
@@ -215,15 +316,15 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            IntVec3 newPosition = currentCursorPosition + offset;
+            IntVec3 newPosition = CurrentCursorPosition + offset;
 
             // Clamp to map bounds
             newPosition.x = UnityEngine.Mathf.Clamp(newPosition.x, 0, map.Size.x - 1);
             newPosition.z = UnityEngine.Mathf.Clamp(newPosition.z, 0, map.Size.z - 1);
 
-            if (newPosition != currentCursorPosition)
+            if (newPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = newPosition;
+                CurrentCursorPosition = newPosition;
                 return true;
             }
 
@@ -231,13 +332,108 @@ namespace RimWorldAccess
         }
 
         /// <summary>
-        /// Resets the navigation state (useful when changing maps or returning to main menu).
+        /// Resets all navigation state (used when returning to main menu).
+        /// Clears all stored per-map cursor positions.
         /// </summary>
         public static void Reset()
         {
-            currentCursorPosition = IntVec3.Invalid;
+            cursorPositionsByMap.Clear();
             lastAnnouncedInfo = "";
             isInitialized = false;
+            initializedForMapId = -1;
+            knownMapIds.Clear();
+            hasAnnouncedMultiMapHint = false;
+        }
+
+        /// <summary>
+        /// Checks for map additions/removals and announces changes to the user.
+        /// Should be called periodically (e.g., from MapNavigationPatch).
+        /// </summary>
+        public static void CheckForMapChanges()
+        {
+            if (Find.Maps == null)
+                return;
+
+            // Build set of current map IDs
+            var currentMapIds = new HashSet<int>();
+            foreach (var map in Find.Maps)
+            {
+                currentMapIds.Add(map.uniqueID);
+            }
+
+            // Check for new maps
+            foreach (int mapId in currentMapIds)
+            {
+                if (!knownMapIds.Contains(mapId))
+                {
+                    // New map detected
+                    Map newMap = Find.Maps.FirstOrDefault(m => m.uniqueID == mapId);
+                    string mapName = GetMapDisplayName(newMap);
+
+                    int totalMaps = Find.Maps.Count;
+                    if (totalMaps == 2 && !hasAnnouncedMultiMapHint)
+                    {
+                        // First time having multiple maps - give the hint
+                        TolkHelper.Speak($"New map: {mapName}. You now have {totalMaps} maps. Use Shift+Period and Shift+Comma to switch between them.");
+                        hasAnnouncedMultiMapHint = true;
+                    }
+                    else if (totalMaps > 1)
+                    {
+                        TolkHelper.Speak($"New map: {mapName}. {totalMaps} maps total.");
+                    }
+                    // Don't announce when going from 0 to 1 map (game start)
+                }
+            }
+
+            // Check for removed maps
+            foreach (int mapId in knownMapIds)
+            {
+                if (!currentMapIds.Contains(mapId))
+                {
+                    // Map was removed - we don't have access to the map object anymore
+                    // so we can't get its name, but we can announce the removal
+                    int remainingMaps = Find.Maps.Count;
+                    if (remainingMaps == 1)
+                    {
+                        TolkHelper.Speak("Map closed. One map remaining.");
+                        hasAnnouncedMultiMapHint = false; // Reset hint for next time
+                    }
+                    else if (remainingMaps > 1)
+                    {
+                        TolkHelper.Speak($"Map closed. {remainingMaps} maps remaining.");
+                    }
+
+                    // Clean up cursor position for the removed map
+                    cursorPositionsByMap.Remove(mapId);
+                }
+            }
+
+            // Update known maps
+            knownMapIds = currentMapIds;
+        }
+
+        /// <summary>
+        /// Gets a display name for a map.
+        /// </summary>
+        private static string GetMapDisplayName(Map map)
+        {
+            if (map == null)
+                return "Unknown";
+
+            // Try to get a meaningful name from the map parent
+            if (map.Parent != null)
+            {
+                // For settlements, use the label
+                if (!string.IsNullOrEmpty(map.Parent.Label))
+                    return map.Parent.Label;
+
+                // For other map parents, use the def label
+                if (map.Parent.def != null && !string.IsNullOrEmpty(map.Parent.def.label))
+                    return map.Parent.def.label;
+            }
+
+            // Fallback: use "Map" with the unique ID
+            return $"Map {map.uniqueID}";
         }
 
         /// <summary>
@@ -250,11 +446,11 @@ namespace RimWorldAccess
                 return false;
 
             // Get the current terrain at the cursor position
-            TerrainDef currentTerrain = currentCursorPosition.GetTerrain(map);
+            TerrainDef currentTerrain = CurrentCursorPosition.GetTerrain(map);
             if (currentTerrain == null)
                 return false;
 
-            IntVec3 searchPosition = currentCursorPosition;
+            IntVec3 searchPosition = CurrentCursorPosition;
 
             // Search in the specified direction until we find a different terrain type
             // Limit search to prevent infinite loops
@@ -284,9 +480,9 @@ namespace RimWorldAccess
             }
 
             // Update position if we moved
-            if (searchPosition != currentCursorPosition)
+            if (searchPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = searchPosition;
+                CurrentCursorPosition = searchPosition;
                 return true;
             }
 
@@ -303,8 +499,8 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            bool startType = HasBarrier(currentCursorPosition, map);
-            IntVec3 searchPosition = currentCursorPosition;
+            bool startType = HasBarrier(CurrentCursorPosition, map);
+            IntVec3 searchPosition = CurrentCursorPosition;
 
             int maxSteps = UnityEngine.Mathf.Max(map.Size.x, map.Size.z);
 
@@ -326,9 +522,10 @@ namespace RimWorldAccess
                 }
             }
 
-            if (searchPosition != currentCursorPosition)
+            // Update position if we moved
+            if (searchPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = searchPosition;
+                CurrentCursorPosition = searchPosition;
                 return true;
             }
 
@@ -344,7 +541,7 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            IntVec3 searchPosition = currentCursorPosition;
+            IntVec3 searchPosition = CurrentCursorPosition;
 
             // Search in the specified direction until we find a steam geyser
             // Limit search to prevent infinite loops
@@ -373,9 +570,9 @@ namespace RimWorldAccess
             }
 
             // Update position if we moved
-            if (searchPosition != currentCursorPosition)
+            if (searchPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = searchPosition;
+                CurrentCursorPosition = searchPosition;
                 return true;
             }
 
@@ -441,7 +638,7 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            IntVec3 searchPosition = currentCursorPosition;
+            IntVec3 searchPosition = CurrentCursorPosition;
 
             // Search in the specified direction until we find a harvestable tree
             // Limit search to prevent infinite loops
@@ -470,9 +667,9 @@ namespace RimWorldAccess
             }
 
             // Update position if we moved
-            if (searchPosition != currentCursorPosition)
+            if (searchPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = searchPosition;
+                CurrentCursorPosition = searchPosition;
                 return true;
             }
 
@@ -488,7 +685,7 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            IntVec3 searchPosition = currentCursorPosition;
+            IntVec3 searchPosition = CurrentCursorPosition;
 
             // Search in the specified direction until we find a mineable tile
             // Limit search to prevent infinite loops
@@ -517,9 +714,9 @@ namespace RimWorldAccess
             }
 
             // Update position if we moved
-            if (searchPosition != currentCursorPosition)
+            if (searchPosition != CurrentCursorPosition)
             {
-                currentCursorPosition = searchPosition;
+                CurrentCursorPosition = searchPosition;
                 return true;
             }
 
@@ -535,19 +732,19 @@ namespace RimWorldAccess
             if (map == null || !isInitialized)
                 return false;
 
-            IntVec3 newPosition = currentCursorPosition + (direction * presetJumpDistance);
+            IntVec3 newPosition = CurrentCursorPosition + (direction * presetJumpDistance);
 
             // Clamp to map bounds
             newPosition.x = UnityEngine.Mathf.Clamp(newPosition.x, 0, map.Size.x - 1);
             newPosition.z = UnityEngine.Mathf.Clamp(newPosition.z, 0, map.Size.z - 1);
 
-            if (newPosition == currentCursorPosition)
+            if (newPosition == CurrentCursorPosition)
             {
                 TolkHelper.Speak("Map boundary");
                 return false;
             }
 
-            currentCursorPosition = newPosition;
+            CurrentCursorPosition = newPosition;
             return true;
         }
 

@@ -19,11 +19,12 @@ namespace RimWorldAccess
             if (window == null)
                 return true;
 
-            // Special handling for FloatMenu when executing a gizmo
-            // (e.g., long-range scanner mineral selection)
-            if (window is FloatMenu floatMenu && GizmoNavigationState.IsExecutingGizmo)
+            // Special handling for FloatMenu when:
+            // 1. Executing a gizmo (e.g., long-range scanner mineral selection)
+            // 2. Confirming a transport pod destination (arrival options)
+            if (window is FloatMenu floatMenu &&
+                (GizmoNavigationState.IsExecutingGizmo || TransportPodLaunchState.IsConfirmingDestination))
             {
-
                 // Extract options from the FloatMenu and open windowless version
                 var optionsField = typeof(FloatMenu).GetField("options",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -32,10 +33,16 @@ namespace RimWorldAccess
                     var options = optionsField.GetValue(floatMenu) as System.Collections.Generic.List<FloatMenuOption>;
                     if (options != null && options.Count > 0)
                     {
+                        // Clear the confirming flag since we're handling it now
+                        TransportPodLaunchState.ClearConfirmingFlag();
+
                         WindowlessFloatMenuState.Open(options, floatMenu.givesColonistOrders);
                         return false; // Prevent FloatMenu from being added
                     }
                 }
+
+                // Clear flag even if we couldn't extract options
+                TransportPodLaunchState.ClearConfirmingFlag();
 
                 // Fallback: let it through if we couldn't extract options
                 return true;
