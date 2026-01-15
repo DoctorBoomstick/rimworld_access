@@ -503,7 +503,8 @@ namespace RimWorldAccess
                 !RoutePlannerState.IsActive &&
                 !GizmoNavigationState.IsActive &&
                 !TradeNavigationState.IsActive &&
-                !SellableItemsState.IsActive)
+                !SellableItemsState.IsActive &&
+                !HistoryState.IsActive)
             {
                 if (key == KeyCode.R && !Event.current.shift && !Event.current.control && !Event.current.alt)
                 {
@@ -1092,36 +1093,232 @@ namespace RimWorldAccess
                 }
             }
 
+            // ===== PRIORITY 4.2: Handle History tab if active =====
+            // History tab has two sub-tabs: Statistics and Messages
+            // Tab/Shift+Tab switches between them, sub-states handle navigation
+            if (HistoryState.IsActive && !WindowlessDialogState.IsActive)
+            {
+                // Safety check: If the History window is no longer open (e.g., closed by game
+                // when switching to world view via dialog jump), clean up our state.
+                // This prevents Escape from being swallowed with no effect.
+                bool historyWindowOpen = Find.WindowStack?.Windows?.Any(w => w is MainTabWindow_History) ?? false;
+                if (!historyWindowOpen)
+                {
+                    HistoryState.Close();
+                    // Don't consume the event - let it propagate to pause menu or world navigation
+                }
+                else
+                {
+                    bool shift = Event.current.shift;
+                    bool ctrl = Event.current.control;
+                    bool alt = Event.current.alt;
+
+                    // Check sub-states first - they handle navigation within their tabs
+                    if (HistoryState.CurrentTab == HistoryState.Tab.Statistics && HistoryStatisticsState.IsActive)
+                    {
+                        if (HistoryStatisticsState.HandleInput(key, shift, ctrl, alt))
+                        {
+                            Event.current.Use();
+                            return;
+                        }
+                    }
+                    else if (HistoryState.CurrentTab == HistoryState.Tab.Messages && HistoryMessagesState.IsActive)
+                    {
+                        if (HistoryMessagesState.HandleInput(key, shift, ctrl, alt))
+                        {
+                            Event.current.Use();
+                            return;
+                        }
+                    }
+
+                    // Tab-level input (Tab key to switch tabs)
+                    if (HistoryState.HandleInput(key, shift, ctrl, alt))
+                    {
+                        Event.current.Use();
+                        return;
+                    }
+
+                    // Escape with no search active - let RimWorld close the window
+                    // (HistoryPatch.Window_OnCancelKeyPressed_Prefix controls when to block)
+                }
+            }
+
             // ===== PRIORITY 4.5: Handle storyteller selection (in-game) if active =====
-            if (StorytellerSelectionState.IsActive)
+            // Skip if WindowlessFloatMenuState is active (e.g., reset to preset menu opened with Alt+R)
+            if (StorytellerSelectionState.IsActive && !WindowlessFloatMenuState.IsActive)
             {
                 bool handled = false;
+                bool inCustomSettings = StorytellerSelectionState.CurrentLevel == StorytellerSelectionLevel.CustomSectionList ||
+                                        StorytellerSelectionState.CurrentLevel == StorytellerSelectionLevel.CustomSettingsList;
+                bool inSettingsList = StorytellerSelectionState.CurrentLevel == StorytellerSelectionLevel.CustomSettingsList;
 
-                if (key == KeyCode.DownArrow)
+                // Alt+R - Reset to preset (only in custom settings)
+                if (key == KeyCode.R && Event.current.alt && inCustomSettings)
                 {
-                    StorytellerSelectionState.SelectNext();
+                    StorytellerSelectionState.OpenResetToPresetMenu();
+                    handled = true;
+                }
+                // Home - Jump to first (or Shift+Home in settings = max value)
+                else if (key == KeyCode.Home)
+                {
+                    if (Event.current.shift && inSettingsList)
+                    {
+                        StorytellerSelectionState.SetCurrentSettingToMax();
+                    }
+                    else
+                    {
+                        StorytellerSelectionState.JumpToFirst();
+                    }
+                    handled = true;
+                }
+                // End - Jump to last (or Shift+End in settings = min value)
+                else if (key == KeyCode.End)
+                {
+                    if (Event.current.shift && inSettingsList)
+                    {
+                        StorytellerSelectionState.SetCurrentSettingToMin();
+                    }
+                    else
+                    {
+                        StorytellerSelectionState.JumpToLast();
+                    }
+                    handled = true;
+                }
+                // Navigation with typeahead support
+                else if (key == KeyCode.DownArrow)
+                {
+                    if (StorytellerSelectionState.HasActiveSearch)
+                    {
+                        StorytellerSelectionState.SelectNextMatch();
+                    }
+                    else
+                    {
+                        StorytellerSelectionState.SelectNext();
+                    }
                     handled = true;
                 }
                 else if (key == KeyCode.UpArrow)
                 {
-                    StorytellerSelectionState.SelectPrevious();
+                    if (StorytellerSelectionState.HasActiveSearch)
+                    {
+                        StorytellerSelectionState.SelectPreviousMatch();
+                    }
+                    else
+                    {
+                        StorytellerSelectionState.SelectPrevious();
+                    }
                     handled = true;
                 }
+                // Left/Right - Adjust slider values with modifiers (only in custom settings list)
+                else if (key == KeyCode.LeftArrow && inSettingsList)
+                {
+                    if (Event.current.control)
+                    {
+                        // Ctrl+Left = decrease by 25% of total positions
+                        StorytellerSelectionState.AdjustCurrentSettingByPercent(-0.25f);
+                    }
+                    else if (Event.current.shift)
+                    {
+                        // Shift+Left = decrease by 10% of total positions
+                        StorytellerSelectionState.AdjustCurrentSettingByPercent(-0.1f);
+                    }
+                    else
+                    {
+                        // Left = decrease by 1 step
+                        StorytellerSelectionState.AdjustCurrentSetting(-1);
+                    }
+                    handled = true;
+                }
+                else if (key == KeyCode.RightArrow && inSettingsList)
+                {
+                    if (Event.current.control)
+                    {
+                        // Ctrl+Right = increase by 25% of total positions
+                        StorytellerSelectionState.AdjustCurrentSettingByPercent(0.25f);
+                    }
+                    else if (Event.current.shift)
+                    {
+                        // Shift+Right = increase by 10% of total positions
+                        StorytellerSelectionState.AdjustCurrentSettingByPercent(0.1f);
+                    }
+                    else
+                    {
+                        // Right = increase by 1 step
+                        StorytellerSelectionState.AdjustCurrentSetting(1);
+                    }
+                    handled = true;
+                }
+                // Tab - Switch between storyteller/difficulty (only at top levels)
                 else if (key == KeyCode.Tab)
                 {
                     StorytellerSelectionState.SwitchLevel();
                     handled = true;
                 }
-                else if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                // Space - Toggle checkbox (only in custom settings list)
+                else if (key == KeyCode.Space && inSettingsList)
                 {
-                    StorytellerSelectionState.Confirm();
+                    StorytellerSelectionState.ToggleCurrentSetting();
                     handled = true;
                 }
+                // Enter - Execute or enter deeper level
+                else if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                {
+                    StorytellerSelectionState.ExecuteOrEnter();
+                    handled = true;
+                }
+                // Escape - Clear search first, then go back or close
                 else if (key == KeyCode.Escape)
                 {
-                    StorytellerSelectionState.Close();
-                    Find.WindowStack.TryRemove(typeof(Page_SelectStorytellerInGame));
+                    if (StorytellerSelectionState.HasActiveSearch)
+                    {
+                        StorytellerSelectionState.ClearTypeaheadSearch();
+                    }
+                    else if (!StorytellerSelectionState.GoBack())
+                    {
+                        // At top level - close the dialog and return to Gameplay options
+                        StorytellerSelectionState.Close();
+                        Find.WindowStack.TryRemove(typeof(Page_SelectStorytellerInGame), doCloseSound: false);
+                        // Reopen the options menu at Gameplay category (3), Change Storyteller setting (0)
+                        WindowlessOptionsMenuState.Open(3, 0);
+                    }
                     handled = true;
+                }
+                // Backspace - Remove last character from typeahead
+                else if (key == KeyCode.Backspace)
+                {
+                    if (StorytellerSelectionState.HasActiveSearch)
+                    {
+                        StorytellerSelectionState.ProcessBackspace();
+                        handled = true;
+                    }
+                }
+                // Typeahead character input - check for printable characters
+                else if (!Event.current.alt && !Event.current.control)
+                {
+                    // Use character from event if available, otherwise map from keycode
+                    char c = Event.current.character;
+                    if (c == '\0')
+                    {
+                        // Map keycode to character for letter keys
+                        if (key >= KeyCode.A && key <= KeyCode.Z)
+                        {
+                            c = (char)('a' + (key - KeyCode.A));
+                        }
+                        else if (key >= KeyCode.Alpha0 && key <= KeyCode.Alpha9)
+                        {
+                            c = (char)('0' + (key - KeyCode.Alpha0));
+                        }
+                        else if (key >= KeyCode.Keypad0 && key <= KeyCode.Keypad9)
+                        {
+                            c = (char)('0' + (key - KeyCode.Keypad0));
+                        }
+                    }
+
+                    if (char.IsLetterOrDigit(c))
+                    {
+                        StorytellerSelectionState.ProcessTypeaheadCharacter(char.ToLower(c));
+                        handled = true;
+                    }
                 }
 
                 if (handled)
@@ -2133,16 +2330,22 @@ namespace RimWorldAccess
                 bool handled = false;
                 var typeahead = NotificationMenuState.Typeahead;
 
-                // Handle Home - jump to first
+                // Handle Home - jump to start of detail view or first item in list
                 if (key == KeyCode.Home)
                 {
-                    NotificationMenuState.JumpToFirst();
+                    if (NotificationMenuState.IsInDetailView)
+                        NotificationMenuState.JumpToDetailStart();
+                    else
+                        NotificationMenuState.JumpToFirst();
                     handled = true;
                 }
-                // Handle End - jump to last
+                // Handle End - jump to end of detail view (buttons) or last item in list
                 else if (key == KeyCode.End)
                 {
-                    NotificationMenuState.JumpToLast();
+                    if (NotificationMenuState.IsInDetailView)
+                        NotificationMenuState.JumpToDetailEnd();
+                    else
+                        NotificationMenuState.JumpToLast();
                     handled = true;
                 }
                 // Handle Escape - clear search FIRST, then go back (detail->list) or close menu
